@@ -10,4 +10,12 @@ public class DemoModuleAApplication {
 		SpringApplication.run(DemoModuleAApplication.class, args);
 	}
 
+	/**
+	 * Utility method to get the module version
+	 * @return the module version string
+	 */
+	public static String getVersion() {
+		return "0.0.1-SNAPSHOT";
+	}
+
 }

@@ -1,5 +1,11 @@
 # @libs/demo-module-a
 
+## 0.0.6
+
+### Patch Changes
+
+- 994ea0e: Test complete E2E workflow with PAT configured
+
 ## 0.0.5
 
 ### Patch Changes

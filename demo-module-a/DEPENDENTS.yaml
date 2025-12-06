@@ -5,6 +5,14 @@ dependents:
   - repo: ecruz165/maven-pnpm-monorepo-dependent-repo
     baseBranch: main
     files:
+      # Option 1: Direct version in dependency (uncomment if used)
       - path: pom.xml
-        search: '<version>0\.0\.1-SNAPSHOT</version>[\s]*<!--\s*demo-module-a\s*-->'
+        # Version-agnostic pattern: [^<]+ matches any version
+        search: '<version>[^<]+</version>[\s]*<!--\s*demo-module-a\s*-->'
         replace: '<version>{{version}}</version> <!-- demo-module-a -->'
+
+      # Option 2: Property-based version (uncomment if used)
+      # - path: pom.xml
+      #   # Matches property definition for demo-module-a version
+      #   search: '<demo\.module\.a\.version>[^<]+</demo\.module\.a\.version>'
+      #   replace: '<demo.module.a.version>{{version}}</demo.module.a.version>'

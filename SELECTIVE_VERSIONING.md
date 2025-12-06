@@ -15,11 +15,17 @@ Git Push → Detect Changes → Build Changed → Version Changed → Publish Ch
 **Triggers:** Pull requests to main/develop
 
 **What it does:**
-- ✅ Detects changed modules
+- ✅ Ensures all modules have package.json (maven:init)
 - ✅ Verifies version sync (maven:status)
-- ✅ Builds only changed modules (or all if structural changes)
-- ✅ Runs tests on changed modules
+- ✅ Builds changed modules in parallel (parallel-build.js)
+- ✅ Runs tests on changed modules in parallel
 - ✅ Publishes test results
+
+**Scripts Used:**
+- `maven-init.js` - Generates package.json for any modules missing it
+- `maven-status.js` - Verifies package.json and pom.xml versions match
+- `changed-modules.js` - Auto-detects which modules changed (used by parallel-build.js)
+- `parallel-build.js` - Builds modules in parallel (4 concurrent)
 
 **Does NOT:**
 - ❌ Version packages
@@ -35,22 +41,32 @@ Git Push → Detect Changes → Build Changed → Version Changed → Publish Ch
 **Jobs:**
 
 #### Job 1: Detect Changes
-- Uses `scripts/src/changed-modules.js`
+- Uses `changed-modules.js`
 - Compares with last commit
 - Outputs CSV list of changed modules
 - Outputs JSON array for matrix builds
 
 #### Job 2: Build & Test Changed
-- Builds ONLY changed modules: `mvn -pl module-a,module-b -am install`
-- Runs tests: `mvn -pl module-a,module-b test`
+- Ensures all modules have package.json (`maven:init`)
+- Builds changed modules in parallel: `parallel-build.js --modules <list> --max-parallel 4`
+- Runs tests in parallel: `parallel-build.js --modules <list> --goal test`
 - Publishes test results
 
+**Scripts Used:**
+- `maven-init.js` - Ensures package.json exists for all modules
+- `parallel-build.js` - Parallel builds for speed (4 concurrent)
+
 #### Job 3: Version Modules
+- Ensures all modules have package.json (`maven:init`)
 - Applies changesets (if any)
 - Updates package.json versions
 - Syncs pom.xml versions with `maven:sync`
 - Commits version changes
 - Pushes to main
+
+**Scripts Used:**
+- `maven-init.js` - Ensures package.json exists before versioning
+- `maven-sync.js` - Syncs pom.xml versions from package.json
 
 #### Job 4: Publish Modules (Matrix)
 - Runs in parallel for each changed module
@@ -58,9 +74,12 @@ Git Push → Detect Changes → Build Changed → Version Changed → Publish Ch
 - Creates deployment summary
 
 #### Job 5: Create Downstream PRs
-- Runs `pnpm downstream:prs`
+- Runs `downstream:prs`
 - Creates PRs in dependent repositories
 - Only for modules that were published
+
+**Scripts Used:**
+- `downstream-prs.js` - Automates PR creation in dependent repos
 
 ---
 
@@ -272,21 +291,29 @@ pnpm downstream:prs
 
 ## Cost Optimization
 
-### With selective publishing:
+### With selective publishing + parallel builds:
 
-**Before (publish all 3 modules every time):**
-- Build time: 3 modules × 1 min = 3 minutes
-- Publish time: 3 modules × 1 min = 3 minutes
+**Before (sequential build, publish all 3 modules every time):**
+- Build time: 3 modules × 1 min = 3 minutes (sequential)
+- Publish time: 3 modules × 1 min = 3 minutes (sequential)
 - Total: 6 minutes per push
 - 100 pushes/month: 600 minutes
 
-**After (publish only changed - avg 1 module):**
-- Build time: 1 module × 1 min = 1 minute
-- Publish time: 1 module × 1 min = 1 minute
+**After (parallel builds, publish only changed - avg 1 module):**
+- Build time: 1 module × 1 min = 1 minute (parallel ready)
+- Publish time: 1 module × 1 min = 1 minute (matrix parallel)
 - Total: 2 minutes per push
 - 100 pushes/month: 200 minutes
 
-**Savings: 67% reduction in CI time** 🎉
+**With multiple changed modules (e.g., 3 modules):**
+- Sequential: 3 modules × 1 min = 3 minutes
+- Parallel (4 concurrent): ~1 minute (3 modules / 4 = 0.75, rounded up)
+- Parallel build savings: 67% faster
+
+**Combined Savings:**
+- Selective publishing: 67% reduction (only build what changed)
+- Parallel builds: up to 75% faster (when building multiple modules)
+- **Total: 67-85% reduction in CI time** 🎉
 
 ---
 
@@ -382,6 +409,145 @@ mvn -pl <modules> test
 Before merging, check:
 ```bash
 pnpm changeset status
+```
+
+---
+
+## All Scripts Reference
+
+All 6 scripts in `scripts/src/` are utilized in the CI/CD pipeline:
+
+### 1. **changed-modules.js**
+**Purpose:** Detect which Maven modules changed using git diff
+
+**Usage:**
+```bash
+node scripts/src/changed-modules.js           # Output list
+node scripts/src/changed-modules.js --csv     # CSV format for CI/CD
+node scripts/src/changed-modules.js --output=file.txt
+```
+
+**Used in:**
+- PR Validation (indirectly via parallel-build.js)
+- Version & Publish (detect-changes job)
+
+---
+
+### 2. **maven-status.js**
+**Purpose:** Verify package.json and pom.xml versions are synchronized
+
+**Usage:**
+```bash
+pnpm maven:status
+```
+
+**Used in:**
+- PR Validation (version verification step)
+
+**Details:**
+- Compares versions in package.json and pom.xml
+- Normalizes -SNAPSHOT suffix for comparison
+- Exits with error if versions don't match
+
+---
+
+### 3. **maven-sync.js**
+**Purpose:** Sync pom.xml versions to match package.json after version bumps
+
+**Usage:**
+```bash
+pnpm maven:sync
+```
+
+**Used in:**
+- Version & Publish (version-modules job, after changeset version)
+
+**Details:**
+- Reads version from package.json
+- Adds -SNAPSHOT suffix (Maven convention)
+- Updates version in pom.xml (after </parent> tag)
+
+---
+
+### 4. **maven-init.js**
+**Purpose:** Generate package.json from pom.xml for modules missing it
+
+**Usage:**
+```bash
+pnpm maven:init
+```
+
+**Used in:**
+- PR Validation (ensures all modules have package.json)
+- Version & Publish (before versioning)
+
+**Generated package.json includes:**
+- NPM version (without -SNAPSHOT)
+- Maven metadata (groupId, artifactId, packaging)
+- Build scripts (build, test, deploy)
+
+---
+
+### 5. **parallel-build.js**
+**Purpose:** Build multiple Maven modules in parallel with colored output
+
+**Usage:**
+```bash
+# Auto-detect changed modules
+node scripts/src/parallel-build.js --max-parallel 4 --goal install
+
+# Build specific modules
+node scripts/src/parallel-build.js --modules demo-module-a,demo-module-b --goal test
+
+# Build all modules
+node scripts/src/parallel-build.js --all --max-parallel 4
+```
+
+**Options:**
+- `--max-parallel, -p N` - Max concurrent builds (default: 4)
+- `--all, -a` - Build all modules
+- `--modules, -m LIST` - Specific modules (CSV)
+- `--with-tests` - Include tests (don't skip)
+- `--goal, -g GOAL` - Maven goal (install, test, package, etc.)
+- `--offline, -o` - Maven offline mode
+
+**Used in:**
+- PR Validation (build and test steps)
+- Version & Publish (build-and-test job)
+
+**Features:**
+- Colored output per module
+- Parallel execution (default 4 concurrent)
+- Auto-detects changes if no modules specified
+- Progress timestamps
+- Build summary with timing
+
+---
+
+### 6. **downstream-prs.js**
+**Purpose:** Create PRs in dependent repositories when module versions change
+
+**Usage:**
+```bash
+pnpm downstream:prs           # Create PRs
+pnpm downstream:prs --dry-run # Preview only
+```
+
+**Used in:**
+- Version & Publish (create-downstream-prs job)
+
+**Configuration:**
+Each module with dependents needs a `DEPENDENTS.yaml`:
+
+```yaml
+# demo-module-a/DEPENDENTS.yaml
+dependents:
+  - repo: ecruz165/maven-pnpm-monorepo-dependent-repo
+    baseBranch: main
+    files:
+      - path: pom.xml
+        search: '<version>0\.0\.1-SNAPSHOT</version>[\s]*<!--\s*demo-module-a\s*-->'
+        replace: '<version>{{version}}</version> <!-- demo-module-a -->'
 ```
 
 ---

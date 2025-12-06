@@ -46,38 +46,21 @@ jobs:
       - name: Install pnpm dependencies
         run: pnpm install
 
+      - name: Ensure all modules have package.json
+        run: pnpm maven:init
+
       - name: Verify version sync
         run: pnpm maven:status
 
-      - name: Detect changed modules
-        id: changes
+      - name: Build changed modules in parallel
         run: |
-          CHANGED=$(node scripts/src/changed-modules.js --csv || echo "")
-          if [ -z "$CHANGED" ]; then
-            echo "modules=all" >> $GITHUB_OUTPUT
-            echo "No specific changes, building all"
-          else
-            echo "modules=$CHANGED" >> $GITHUB_OUTPUT
-            echo "Changed modules: $CHANGED"
-          fi
+          # parallel-build.js auto-detects changes, builds all if no changes
+          node scripts/src/parallel-build.js --max-parallel 4 --goal install
 
-      - name: Build changed modules
+      - name: Run tests on changed modules
         run: |
-          if [ "${{ steps.changes.outputs.modules }}" = "all" ]; then
-            echo "Building all modules"
-            mvn clean install -DskipTests
-          else
-            echo "Building changed modules: ${{ steps.changes.outputs.modules }}"
-            mvn -pl "${{ steps.changes.outputs.modules }}" -am clean install -DskipTests
-          fi
-
-      - name: Run tests
-        run: |
-          if [ "${{ steps.changes.outputs.modules }}" = "all" ]; then
-            mvn test
-          else
-            mvn -pl "${{ steps.changes.outputs.modules }}" -am test
-          fi
+          # Run tests with parallel-build.js
+          node scripts/src/parallel-build.js --max-parallel 4 --goal test
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
@@ -100,9 +83,5 @@ jobs:
         run: |
           echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.changes.outputs.modules }}" = "all" ]; then
-            echo "✅ All modules built and tested successfully" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ Changed modules built and tested successfully" >> $GITHUB_STEP_SUMMARY
-            echo "**Modules:** \`${{ steps.changes.outputs.modules }}\`" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "✅ Modules built and tested successfully using parallel builds" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Strategy:** Changed modules auto-detected and built in parallel (max 4 concurrent)" >> $GITHUB_STEP_SUMMARY

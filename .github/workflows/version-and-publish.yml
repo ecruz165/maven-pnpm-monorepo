@@ -119,23 +119,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build changed modules
+      - name: Build changed modules in parallel
         run: |
           MODULES="${{ needs.detect-changes.outputs.changed-modules }}"
-          echo "Building modules: $MODULES"
-
-          # Convert CSV to Maven project list format
-          MODULE_LIST=$(echo "$MODULES" | tr ',' ' ')
-
-          # Build with -pl (project list) and -am (also make dependencies)
-          mvn -pl "$MODULES" -am clean install -DskipTests
+          echo "Building modules in parallel: $MODULES"
+          # Use parallel-build.js for faster builds
+          node scripts/src/parallel-build.js --modules "$MODULES" --max-parallel 4 --goal install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Test changed modules
+      - name: Test changed modules in parallel
         run: |
           MODULES="${{ needs.detect-changes.outputs.changed-modules }}"
-          mvn -pl "$MODULES" -am test
+          # Use parallel-build.js for parallel test execution
+          node scripts/src/parallel-build.js --modules "$MODULES" --max-parallel 4 --goal test
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
@@ -177,6 +174,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+
+      - name: Ensure all modules have package.json
+        run: pnpm maven:init
 
       - name: Configure git
         run: |

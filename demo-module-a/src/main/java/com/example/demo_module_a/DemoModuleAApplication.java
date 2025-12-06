@@ -3,6 +3,11 @@ package com.example.demo_module_a;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+/**
+ * Main application class for Demo Module A.
+ * This is a demonstration Spring Boot library module for testing
+ * selective versioning and publishing workflows.
+ */
 @SpringBootApplication
 public class DemoModuleAApplication {
 

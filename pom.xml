@@ -50,17 +50,17 @@
         </dependencies>
     </dependencyManagement>
 
-    <!-- Distribution management for CodeArtifact -->
+    <!-- Distribution management for GitHub Packages -->
     <distributionManagement>
         <repository>
-            <id>codeartifact</id>
-            <name>AWS CodeArtifact</name>
-            <url>${env.CODEARTIFACT_URL}</url>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/ecruz165/maven-pnpm-monorepo</url>
         </repository>
         <snapshotRepository>
-            <id>codeartifact</id>
-            <name>AWS CodeArtifact Snapshots</name>
-            <url>${env.CODEARTIFACT_URL}</url>
+            <id>github</id>
+            <name>GitHub Packages Snapshots</name>
+            <url>https://maven.pkg.github.com/ecruz165/maven-pnpm-monorepo</url>
         </snapshotRepository>
     </distributionManagement>
 
@@ -106,23 +106,26 @@
         </pluginManagement>
     </build>
 
-    <!-- Profiles for CodeArtifact authentication -->
+    <!-- Profiles for GitHub Packages -->
     <profiles>
         <profile>
-            <id>codeartifact</id>
+            <id>github</id>
             <activation>
                 <activeByDefault>false</activeByDefault>
             </activation>
             <repositories>
                 <repository>
-                    <id>codeartifact</id>
-                    <url>${env.CODEARTIFACT_URL}</url>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/ecruz165/maven-pnpm-monorepo</url>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
                 </repository>
             </repositories>
             <pluginRepositories>
                 <pluginRepository>
-                    <id>codeartifact</id>
-                    <url>${env.CODEARTIFACT_URL}</url>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/ecruz165/maven-pnpm-monorepo</url>
                 </pluginRepository>
             </pluginRepositories>
         </profile>

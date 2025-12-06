@@ -9,9 +9,11 @@
     "maven:status": "node src/maven-status.js",
     "maven:sync": "node src/maven-sync.js",
     "maven:init": "node src/maven-init.js",
-    "downstream:prs": "node src/downstream-prs.js"
+    "downstream:prs": "node src/downstream-prs.js",
+    "setup:codeartifact": "node src/setup-codeartifact.js"
   },
   "dependencies": {
+    "@aws-sdk/client-codeartifact": "^3.700.0",
     "@octokit/rest": "^21.0.0",
     "fast-xml-parser": "^4.5.0",
     "yaml": "^2.3.4"

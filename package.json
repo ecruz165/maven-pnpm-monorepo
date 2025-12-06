@@ -18,6 +18,7 @@
     "maven:status": "pnpm -F @libs/scripts maven:status",
     "maven:init": "pnpm -F @libs/scripts maven:init",
     "downstream:prs": "pnpm -F @libs/scripts downstream:prs",
+    "setup:codeartifact": "pnpm -F @libs/scripts setup:codeartifact",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish",

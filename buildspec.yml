@@ -1,0 +1,132 @@
+version: 0.2
+
+# AWS CodeBuild specification for Maven PNPM Monorepo
+# Builds Maven modules and publishes artifacts to CodeArtifact
+
+env:
+  variables:
+    JAVA_HOME: "/usr/lib/jvm/java-21-amazon-corretto"
+    MAVEN_OPTS: "-Xmx1024m -XX:MaxMetaspaceSize=512m"
+
+  # If you need secrets from Parameter Store or Secrets Manager:
+  # parameter-store:
+  #   SOME_SECRET: /path/to/parameter
+  # secrets-manager:
+  #   SOME_SECRET: secret-name:json-key:version
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+      nodejs: 20
+
+    commands:
+      - echo "Installing dependencies..."
+      - java -version
+      - mvn --version
+      - node --version
+
+      # Install pnpm
+      - npm install -g pnpm@9
+      - pnpm --version
+
+  pre_build:
+    commands:
+      - echo "Pre-build phase started on `date`"
+      - echo "Configuring CodeArtifact authentication..."
+
+      # Get CodeArtifact auth token
+      - export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token --domain $CODEARTIFACT_DOMAIN --domain-owner $CODEARTIFACT_DOMAIN_OWNER --region $AWS_REGION --query authorizationToken --output text)
+
+      # Generate Maven settings.xml
+      - |
+        mkdir -p ~/.m2
+        cat > ~/.m2/settings.xml << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <settings>
+          <servers>
+            <server>
+              <id>codeartifact</id>
+              <username>aws</username>
+              <password>${CODEARTIFACT_AUTH_TOKEN}</password>
+            </server>
+          </servers>
+          <profiles>
+            <profile>
+              <id>codeartifact</id>
+              <repositories>
+                <repository>
+                  <id>codeartifact</id>
+                  <url>${CODEARTIFACT_URL}</url>
+                </repository>
+              </repositories>
+            </profile>
+          </profiles>
+          <activeProfiles>
+            <activeProfile>codeartifact</activeProfile>
+          </activeProfiles>
+        </settings>
+        EOF
+
+      - echo "Maven settings configured for CodeArtifact"
+      - echo "Repository URL: $CODEARTIFACT_URL"
+
+      # Verify settings
+      - mvn help:effective-settings
+
+  build:
+    commands:
+      - echo "Build phase started on `date`"
+      - echo "Building Maven modules..."
+
+      # Build all modules
+      - mvn clean install -DskipTests
+
+      # Run tests (optional, remove -DskipTests above if you want tests during install)
+      - mvn test
+
+      - echo "Build completed successfully"
+
+  post_build:
+    commands:
+      - echo "Post-build phase started on `date`"
+      - echo "Publishing artifacts to CodeArtifact..."
+
+      # Deploy artifacts to CodeArtifact
+      - mvn deploy -DskipTests
+
+      - echo "Artifacts published successfully"
+      - echo "Build completed on `date`"
+
+reports:
+  # Surefire test reports
+  surefire-reports:
+    files:
+      - '*/target/surefire-reports/*.xml'
+    file-format: 'JUNITXML'
+
+  # Coverage reports (if using JaCoCo)
+  # jacoco-reports:
+  #   files:
+  #     - '*/target/site/jacoco/jacoco.xml'
+  #   file-format: 'JACOCOXML'
+
+artifacts:
+  files:
+    - '*/target/*.jar'
+    - '*/target/*.war'
+    - 'pom.xml'
+    - '*/pom.xml'
+  name: maven-artifacts
+  secondary-artifacts:
+    test-reports:
+      files:
+        - '*/target/surefire-reports/**/*'
+      name: test-reports
+
+cache:
+  paths:
+    - '/root/.m2/**/*'
+    - '/root/.pnpm-store/**/*'
+    - 'node_modules/**/*'
+    - '*/node_modules/**/*'

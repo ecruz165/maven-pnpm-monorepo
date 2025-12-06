@@ -18,17 +18,17 @@ This directory contains Node.js scripts that bridge Maven and pnpm ecosystems, e
 
 | Script | Purpose | Documentation |
 |--------|---------|---------------|
-| [changed-modules.js](src/README-changed-modules.md) | Detect which Maven modules changed | [Docs](src/README-changed-modules.md) |
-| [parallel-build.js](src/README-parallel-build.md) | Build multiple modules concurrently | [Docs](src/README-parallel-build.md) |
-| [downstream-prs.js](src/README-downstream-prs.md) | Create PRs in dependent repositories | [Docs](src/README-downstream-prs.md) |
+| [changed-modules.js](docs/README-changed-modules.md) | Detect which Maven modules changed | [Docs](docs/README-changed-modules.md) |
+| [parallel-build.js](docs/README-parallel-build.md) | Build multiple modules concurrently | [Docs](docs/README-parallel-build.md) |
+| [downstream-prs.js](docs/README-downstream-prs.md) | Create PRs in dependent repositories | [Docs](docs/README-downstream-prs.md) |
 
 ### Synchronization Scripts
 
 | Script | Purpose | Documentation |
 |--------|---------|---------------|
-| [maven-init.js](src/README-maven-init.md) | Initialize package.json for Maven modules | [Docs](src/README-maven-init.md) |
-| [maven-sync.js](src/README-maven-sync.md) | Sync versions between Maven and pnpm | [Docs](src/README-maven-sync.md) |
-| [maven-status.js](src/README-maven-status.md) | Check version synchronization status | [Docs](src/README-maven-status.md) |
+| [maven-init.js](docs/README-maven-init.md) | Initialize package.json for Maven modules | [Docs](docs/README-maven-init.md) |
+| [maven-sync.js](docs/README-maven-sync.md) | Sync versions between Maven and pnpm | [Docs](docs/README-maven-sync.md) |
+| [maven-status.js](docs/README-maven-status.md) | Check version synchronization status | [Docs](docs/README-maven-status.md) |
 
 ## Quick Start
 

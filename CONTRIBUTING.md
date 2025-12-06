@@ -396,12 +396,12 @@ The CI pipeline automatically:
 ### Scripts Documentation
 
 Each script has detailed documentation:
-- [changed-modules.js](./scripts/src/README-changed-modules.md)
-- [maven-sync.js](./scripts/src/README-maven-sync.md)
-- [maven-init.js](./scripts/src/README-maven-init.md)
-- [maven-status.js](./scripts/src/README-maven-status.md)
-- [parallel-build.js](./scripts/src/README-parallel-build.md)
-- [downstream-prs.js](./scripts/src/README-downstream-prs.md)
+- [changed-modules.js](scripts/docs/README-changed-modules.md)
+- [maven-sync.js](scripts/docs/README-maven-sync.md)
+- [maven-init.js](scripts/docs/README-maven-init.md)
+- [maven-status.js](scripts/docs/README-maven-status.md)
+- [parallel-build.js](scripts/docs/README-parallel-build.md)
+- [downstream-prs.js](scripts/docs/README-downstream-prs.md)
 
 ### Getting Help
 

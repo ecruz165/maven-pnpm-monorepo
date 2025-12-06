@@ -58,8 +58,8 @@ jobs:
             echo "has-changes=true" >> $GITHUB_OUTPUT
             echo "modules=$CHANGED" >> $GITHUB_OUTPUT
 
-            # Convert CSV to JSON array
-            MODULES_JSON=$(echo "$CHANGED" | tr ',' '\n' | jq -R . | jq -s .)
+            # Convert CSV to JSON array (compact, single line)
+            MODULES_JSON=$(echo "$CHANGED" | tr ',' '\n' | jq -R . | jq -sc .)
             echo "modules-json=$MODULES_JSON" >> $GITHUB_OUTPUT
 
             echo "Changed modules: $CHANGED"

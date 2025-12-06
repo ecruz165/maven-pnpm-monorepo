@@ -11,7 +11,7 @@
 	<artifactId>demo-module-a</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>demo-module-a</name>
-	<description>Module A</description>
+	<description>Demo Module A - Testing selective versioning</description>
 	<url/>
 	<licenses>
 		<license/>

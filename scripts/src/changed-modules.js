@@ -5,9 +5,9 @@
  * Usage: node changed-modules.js [--base main] [--csv] [--output dir]
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Parse CLI arguments
@@ -38,25 +38,25 @@ function parseArgs() {
  */
 function findMavenModules(rootDir) {
   const modules = [];
-  const rootPomPath = path.join(rootDir, 'pom.xml');
+  const rootPomPath = join(rootDir, 'pom.xml');
 
-  if (!fs.existsSync(rootPomPath)) {
+  if (!existsSync(rootPomPath)) {
     throw new Error('Root pom.xml not found');
   }
 
   // Read root pom.xml to find module directories
-  const rootPom = fs.readFileSync(rootPomPath, 'utf8');
+  const rootPom = readFileSync(rootPomPath, 'utf8');
   const moduleMatches = rootPom.matchAll(/<module>([^<]+)<\/module>/g);
 
   for (const match of moduleMatches) {
     const modulePath = match[1].trim();
-    const modulePomPath = path.join(rootDir, modulePath, 'pom.xml');
+    const modulePomPath = join(rootDir, modulePath, 'pom.xml');
 
-    if (fs.existsSync(modulePomPath)) {
+    if (existsSync(modulePomPath)) {
       modules.push({
         name: modulePath,
         path: modulePath,
-        absolutePath: path.join(rootDir, modulePath)
+        absolutePath: join(rootDir, modulePath)
       });
     }
   }
@@ -122,31 +122,31 @@ function mapFilesToModules(changedFiles, modules) {
  * Generate troubleshooting artifacts
  */
 function generateArtifacts(outputDir, data) {
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+  if (!existsSync(outputDir)) {
+    mkdirSync(outputDir, { recursive: true });
   }
 
   // change-detection.json: Full structured data
-  fs.writeFileSync(
-    path.join(outputDir, 'change-detection.json'),
+  writeFileSync(
+    join(outputDir, 'change-detection.json'),
     JSON.stringify(data, null, 2)
   );
 
   // changed-modules.txt: Module list (one per line)
-  fs.writeFileSync(
-    path.join(outputDir, 'changed-modules.txt'),
+  writeFileSync(
+    join(outputDir, 'changed-modules.txt'),
     data.changedModules.join('\n')
   );
 
   // maven-pl.txt: Comma-separated for Maven
-  fs.writeFileSync(
-    path.join(outputDir, 'maven-pl.txt'),
+  writeFileSync(
+    join(outputDir, 'maven-pl.txt'),
     data.changedModules.join(',')
   );
 
   // changed-files.txt: All changed files
-  fs.writeFileSync(
-    path.join(outputDir, 'changed-files.txt'),
+  writeFileSync(
+    join(outputDir, 'changed-files.txt'),
     data.changedFiles.join('\n')
   );
 
@@ -168,8 +168,8 @@ All Modules:
 ${data.allModules.map(m => `  - ${m.name}`).join('\n')}
 `.trim();
 
-  fs.writeFileSync(
-    path.join(outputDir, 'summary.txt'),
+  writeFileSync(
+    join(outputDir, 'summary.txt'),
     summary
   );
 

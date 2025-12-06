@@ -8,3 +8,4 @@ A demo Spring Boot library module for testing selective versioning and publishin
 - Demonstrates downstream PR automation workflow
 - Supports property-based version references in dependent repositories
 - Automatically creates PRs in dependent repositories on version updates
+- Complete E2E workflow tested and verified

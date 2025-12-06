@@ -27,6 +27,8 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Override parent: enable deployment for this module -->
+		<maven.deploy.skip>false</maven.deploy.skip>
 	</properties>
 	<dependencies>
 		<dependency>

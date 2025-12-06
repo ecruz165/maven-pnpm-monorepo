@@ -1,0 +1,22 @@
+{
+  "baseBranch": "main",
+  "allModules": [
+    {
+      "name": "demo-module-a",
+      "path": "demo-module-a",
+      "absolutePath": "/Users/edwincruz/Development/Workspaces/ecruz165/maven-pnpm-monorepo/demo-module-a"
+    },
+    {
+      "name": "demo-module-b",
+      "path": "demo-module-b",
+      "absolutePath": "/Users/edwincruz/Development/Workspaces/ecruz165/maven-pnpm-monorepo/demo-module-b"
+    },
+    {
+      "name": "demo-module-c",
+      "path": "demo-module-c",
+      "absolutePath": "/Users/edwincruz/Development/Workspaces/ecruz165/maven-pnpm-monorepo/demo-module-c"
+    }
+  ],
+  "changedFiles": [],
+  "changedModules": []
+}

@@ -1,0 +1,16 @@
+Change Detection Summary
+========================
+
+Base Branch: main
+Total Modules: 3
+Changed Modules: 0
+
+Changed Files: 0
+
+Modules with Changes:
+  (none)
+
+All Modules:
+  - demo-module-a
+  - demo-module-b
+  - demo-module-c

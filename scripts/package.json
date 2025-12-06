@@ -1,0 +1,21 @@
+{
+  "name": "@libs/scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build and sync scripts for Maven PNPM monorepo",
+  "scripts": {
+    "build": "tsc",
+    "maven:status": "tsx src/maven-status.ts",
+    "maven:sync": "tsx src/maven-sync.ts",
+    "maven:init": "tsx src/maven-init.ts"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

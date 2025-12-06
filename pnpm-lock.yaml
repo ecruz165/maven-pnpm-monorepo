@@ -9,17 +9,23 @@ importers:
   .:
     devDependencies:
       '@changesets/cli':
-        specifier: ^2.27.1
+        specifier: ^2.29.8
         version: 2.29.8(@types/node@20.19.25)
       '@types/node':
-        specifier: ^20.11.0
+        specifier: ^20.19.25
         version: 20.19.25
       tsx:
-        specifier: ^4.7.0
+        specifier: ^4.8.2
         version: 4.21.0
       typescript:
-        specifier: ^5.3.3
+        specifier: ^5.9.3
         version: 5.9.3
+
+  demo-module-a: {}
+
+  demo-module-b: {}
+
+  demo-module-c: {}
 
 packages:
 

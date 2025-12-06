@@ -1,0 +1,16 @@
+{
+  "name": "@libs/demo-module-c",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Module C",
+  "maven": {
+    "groupId": "com.example",
+    "artifactId": "demo-module-c",
+    "packaging": "jar"
+  },
+  "scripts": {
+    "build": "cd .. && mvn -pl demo-module-c -am clean package -DskipTests",
+    "test": "cd .. && mvn -pl demo-module-c test",
+    "deploy": "cd .. && mvn -pl demo-module-c -am clean deploy -DskipTests"
+  }
+}

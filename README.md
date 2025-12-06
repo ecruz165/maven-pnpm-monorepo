@@ -22,7 +22,7 @@ This template solves all of that.
 | **Changesets** | Explicit versioning with auto-generated changelogs |
 | **Downstream PRs** | Automatically create PRs on repos that depend on your libraries |
 | **pnpm Workspaces** | Modern monorepo tooling integrated with Maven |
-| **CI/CD Ready** | GitHub Actions + AWS CodeBuild configurations included |
+| **CI/CD Ready** | GitHub Actions with parallel builds and automated publishing |
 
 ## Quick Start
 
@@ -232,36 +232,42 @@ mvn clean deploy -pl modules/auth-commons
 
 ## CI/CD
 
-### GitHub Actions
+### GitHub Actions Workflow
 
-The included workflow (`.github/workflows/release.yml`) handles:
+The included workflow (`.github/workflows/version-and-publish.yml`) handles the complete release pipeline:
 
-1. **On PR**: Auto-generates changeset from branch name and changed modules
-2. **On merge to main**: Creates "Version Packages" PR
-3. **When Version PR merges**: Bumps versions, publishes artifacts, creates downstream PRs
+**Pipeline Stages:**
 
-### AWS CodeBuild
+1. **Change Detection** - Detects which modules changed using git diff
+2. **Build & Test** - Parallel builds of changed modules with dependencies
+3. **Version Bump** - Applies changeset versions and syncs to Maven POMs
+4. **Publish** - Deploys to GitHub Packages (only changed modules)
+5. **Downstream PRs** - Creates pull requests in dependent repositories
 
-Use the included `buildspec.yml`:
+**Trigger Points:**
 
-```yaml
-phases:
-  pre_build:
-    commands:
-      - node scripts/changed-modules.js --output ./artifacts
+- **On push to main**: Full pipeline executes
+  - Detects changes since last commit
+  - Builds and tests changed modules
+  - Versions packages via changesets
+  - Publishes to GitHub Packages
+  - Creates downstream dependency update PRs
 
-  build:
-    commands:
-      - CHANGED=$(cat ./artifacts/maven-pl.txt)
-      - |
-        if [ -n "$CHANGED" ]; then
-          mvn clean deploy -pl "$CHANGED" -am
-        fi
+**Key Features:**
 
-artifacts:
-  files:
-    - 'artifacts/**/*'
-```
+- Selective building (only changed modules + dependencies)
+- Parallel execution for faster builds
+- Automatic version synchronization (package.json ↔ pom.xml)
+- Downstream notification via property-based updates
+- GitHub Packages integration with automatic authentication
+
+**Workflow Details:**
+
+See [.github/WORKFLOW_SEQUENCE.md](./.github/WORKFLOW_SEQUENCE.md) for complete pipeline documentation including:
+- Detailed job breakdown and timing
+- Script usage by stage
+- Data flow between jobs
+- Troubleshooting guide
 
 ## Configuration
 
@@ -288,12 +294,18 @@ dependents:
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `GITHUB_TOKEN` | GitHub PAT for creating PRs |
-| `CODEARTIFACT_DOMAIN` | AWS CodeArtifact domain |
-| `CODEARTIFACT_REPO` | AWS CodeArtifact repository |
-| `AWS_REGION` | AWS region |
+| Variable | Description | Required For |
+|----------|-------------|--------------|
+| `GITHUB_TOKEN` | GitHub Actions token (auto-provided) | Publishing to GitHub Packages |
+| `PAT_TOKEN` | Personal Access Token with `repo` scope | Creating downstream PRs (cross-repo) |
+
+**GitHub Packages Configuration:**
+
+The workflow automatically publishes Maven artifacts to GitHub Packages. No additional credentials needed - `GITHUB_TOKEN` is automatically provided by GitHub Actions.
+
+**Setting up PAT_TOKEN for Downstream PRs:**
+
+See [.github/PAT_SETUP.md](./.github/PAT_SETUP.md) for detailed instructions on creating and configuring a Personal Access Token for cross-repository operations.
 
 ## Workflows
 
@@ -315,9 +327,13 @@ git add .
 git commit -m "feat(auth-commons): add OAuth2 support"
 git push origin feat/add-oauth
 
-# 5. Create PR → CI auto-generates changeset if missing
-# 6. Merge PR → "Version Packages" PR is created
-# 7. Merge Version PR → Published with changelog
+# 5. Create and merge PR
+# 6. On merge to main:
+#    - CI detects changed modules
+#    - Applies changeset versions
+#    - Publishes to GitHub Packages
+#    - Generates CHANGELOG.md
+#    - Creates downstream PRs automatically
 ```
 
 ### Releasing a Hotfix

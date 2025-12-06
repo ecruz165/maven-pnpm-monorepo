@@ -1,5 +1,11 @@
 # @libs/demo-module-a
 
+## 0.0.5
+
+### Patch Changes
+
+- 08b7415: Document automatic PR creation feature
+
 ## 0.0.4
 
 ### Patch Changes

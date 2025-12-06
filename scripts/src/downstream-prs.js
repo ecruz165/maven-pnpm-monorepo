@@ -131,6 +131,10 @@ function applyFileReplacements(localPath, files, version) {
  */
 function createAndPushBranch(localPath, branchName, moduleName, version, changes) {
   try {
+    // Configure git identity for the repository
+    execSync(`git -C ${localPath} config user.name "github-actions[bot]"`, { stdio: 'pipe' });
+    execSync(`git -C ${localPath} config user.email "github-actions[bot]@users.noreply.github.com"`, { stdio: 'pipe' });
+
     execSync(`git -C ${localPath} checkout -b ${branchName}`, { stdio: 'pipe' });
     execSync(`git -C ${localPath} add -A`, { stdio: 'pipe' });
 

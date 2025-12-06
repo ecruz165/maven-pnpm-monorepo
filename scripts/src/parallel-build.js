@@ -5,10 +5,14 @@
  * Usage: node parallel-build.js [--all] [--modules m1,m2] [-p 4] [--with-tests]
  */
 
-const { spawn, execSync } = require('child_process');
-const { existsSync, readFileSync } = require('fs');
-const { join } = require('path');
-const path = require('path');
+import { spawn, execSync } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
+import { join, resolve } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Color codes for each module (cycle through)
 const COLORS = [
@@ -293,7 +297,7 @@ function printSummary(results) {
 async function main() {
   try {
     const options = parseArgs();
-    const rootDir = path.resolve(__dirname, '../..');
+    const rootDir = resolve(__dirname, '../..');
 
     let modulesToBuild;
 

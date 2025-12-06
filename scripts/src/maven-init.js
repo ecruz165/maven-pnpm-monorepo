@@ -12,36 +12,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-interface PomMetadata {
-  groupId: string;
-  artifactId: string;
-  version: string;
-  name?: string;
-  description?: string;
-  packaging?: string;
-}
-
-interface ModulePackageJson {
-  name: string;
-  version: string;
-  private: boolean;
-  description: string | undefined;
-  maven: {
-    groupId: string;
-    artifactId: string;
-    packaging: string | undefined;
-  };
-  scripts: {
-    build: string;
-    test: string;
-    deploy: string;
-  };
-}
-
 /**
  * Find all Maven modules from root pom.xml
  */
-function findMavenModules(rootDir: string): string[] {
+function findMavenModules(rootDir) {
   const rootPomPath = join(rootDir, 'pom.xml');
 
   if (!existsSync(rootPomPath)) {
@@ -51,7 +25,7 @@ function findMavenModules(rootDir: string): string[] {
   const rootPom = readFileSync(rootPomPath, 'utf8');
   const moduleMatches = rootPom.matchAll(/<module>([^<]+)<\/module>/g);
 
-  const modules: string[] = [];
+  const modules = [];
   for (const match of moduleMatches) {
     modules.push(match[1].trim());
   }
@@ -62,7 +36,7 @@ function findMavenModules(rootDir: string): string[] {
 /**
  * Read metadata from pom.xml
  */
-function readPomMetadata(modulePath: string): PomMetadata | null {
+function readPomMetadata(modulePath) {
   const pomPath = join(modulePath, 'pom.xml');
 
   if (!existsSync(pomPath)) {
@@ -107,7 +81,7 @@ function readPomMetadata(modulePath: string): PomMetadata | null {
 /**
  * Generate package.json from pom metadata
  */
-function generatePackageJson(moduleName: string, metadata: PomMetadata): ModulePackageJson {
+function generatePackageJson(moduleName, metadata) {
   // Remove -SNAPSHOT for npm version
   const npmVersion = metadata.version.replace(/-SNAPSHOT$/, '');
 
@@ -132,7 +106,7 @@ function generatePackageJson(moduleName: string, metadata: PomMetadata): ModuleP
 /**
  * Initialize package.json for modules without one
  */
-function initializeModules(rootDir: string): void {
+function initializeModules(rootDir) {
   const modules = findMavenModules(rootDir);
   let createdCount = 0;
   let skippedCount = 0;

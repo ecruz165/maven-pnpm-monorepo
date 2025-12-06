@@ -1,0 +1,281 @@
+#!/usr/bin/env node
+
+/**
+ * Create pull requests in downstream repositories when a module is published
+ * Usage: node downstream-prs.js --module demo-module-a --version 0.0.2
+ */
+
+import { Octokit } from '@octokit/rest';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
+import YAML from 'yaml';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+/**
+ * Parse CLI arguments
+ */
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const options = {
+    module: '',
+    version: '',
+    dryRun: false
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--module' && i + 1 < args.length) {
+      options.module = args[++i];
+    } else if (args[i] === '--version' && i + 1 < args.length) {
+      options.version = args[++i];
+    } else if (args[i] === '--dry-run') {
+      options.dryRun = true;
+    }
+  }
+
+  if (!options.module || !options.version) {
+    console.error('Error: --module and --version are required');
+    console.error('Usage: node downstream-prs.js --module demo-module-a --version 0.0.2');
+    process.exit(1);
+  }
+
+  return options;
+}
+
+/**
+ * Read DEPENDENTS.yaml from module directory
+ */
+function readDependentsConfig(moduleName) {
+  const rootDir = join(__dirname, '../..');
+  const dependentsPath = join(rootDir, moduleName, 'DEPENDENTS.yaml');
+
+  if (!existsSync(dependentsPath)) {
+    console.log(`No DEPENDENTS.yaml found for ${moduleName}`);
+    return null;
+  }
+
+  try {
+    const content = readFileSync(dependentsPath, 'utf8');
+    return YAML.parse(content);
+  } catch (error) {
+    console.error(`Error reading DEPENDENTS.yaml:`, error);
+    return null;
+  }
+}
+
+/**
+ * Clone or update repository
+ */
+function cloneOrUpdateRepo(repoUrl, localPath, baseBranch) {
+  try {
+    if (existsSync(localPath)) {
+      console.log(`  Updating existing repository at ${localPath}`);
+      execSync(`git -C ${localPath} fetch origin`, { stdio: 'pipe' });
+      execSync(`git -C ${localPath} checkout ${baseBranch}`, { stdio: 'pipe' });
+      execSync(`git -C ${localPath} pull origin ${baseBranch}`, { stdio: 'pipe' });
+    } else {
+      console.log(`  Cloning repository ${repoUrl}`);
+      mkdirSync(dirname(localPath), { recursive: true });
+      execSync(`git clone ${repoUrl} ${localPath}`, { stdio: 'pipe' });
+      execSync(`git -C ${localPath} checkout ${baseBranch}`, { stdio: 'pipe' });
+    }
+    return true;
+  } catch (error) {
+    console.error(`  Error cloning/updating repository:`, error.message || error);
+    return false;
+  }
+}
+
+/**
+ * Apply file replacements
+ */
+function applyFileReplacements(localPath, files, version) {
+  const changes = [];
+  let modified = false;
+
+  for (const file of files) {
+    const filePath = join(localPath, file.path);
+
+    if (!existsSync(filePath)) {
+      console.log(`  Warning: File ${file.path} not found, skipping`);
+      continue;
+    }
+
+    try {
+      const content = readFileSync(filePath, 'utf8');
+      const replacement = file.replace.replace(/\{\{version\}\}/g, version);
+      const regex = new RegExp(file.search, 'g');
+      const newContent = content.replace(regex, replacement);
+
+      if (newContent !== content) {
+        writeFileSync(filePath, newContent, 'utf8');
+        changes.push(`Updated ${file.path}`);
+        modified = true;
+        console.log(`  ✓ Modified ${file.path}`);
+      } else {
+        console.log(`  No changes needed for ${file.path}`);
+      }
+    } catch (error) {
+      console.error(`  Error processing ${file.path}:`, error);
+    }
+  }
+
+  return { modified, changes };
+}
+
+/**
+ * Create and push branch
+ */
+function createAndPushBranch(localPath, branchName, moduleName, version, changes) {
+  try {
+    execSync(`git -C ${localPath} checkout -b ${branchName}`, { stdio: 'pipe' });
+    execSync(`git -C ${localPath} add -A`, { stdio: 'pipe' });
+
+    const commitMessage = `chore(deps): update ${moduleName} to ${version}\n\n${changes.join('\n')}`;
+    execSync(`git -C ${localPath} commit -m "${commitMessage}"`, { stdio: 'pipe' });
+    execSync(`git -C ${localPath} push -u origin ${branchName}`, { stdio: 'pipe' });
+
+    console.log(`  ✓ Pushed branch ${branchName}`);
+    return true;
+  } catch (error) {
+    console.error(`  Error creating/pushing branch:`, error.message || error);
+    return false;
+  }
+}
+
+/**
+ * Create pull request
+ */
+async function createPullRequest(octokit, repo, baseBranch, branchName, moduleName, version, changes) {
+  try {
+    const [owner, repoName] = repo.split('/');
+
+    const title = `chore(deps): update ${moduleName} to ${version}`;
+    const body = `## Summary
+
+This PR updates the dependency \`${moduleName}\` to version \`${version}\`.
+
+## Changes
+
+${changes.map(c => `- ${c}`).join('\n')}
+
+## Notes
+
+This PR was automatically generated by the Maven PNPM monorepo downstream PR automation.
+
+---
+*Generated with ❤️ by [maven-pnpm-monorepo](https://github.com/ecruz165/maven-pnpm-monorepo)*`;
+
+    const response = await octokit.pulls.create({
+      owner,
+      repo: repoName,
+      title,
+      head: branchName,
+      base: baseBranch,
+      body
+    });
+
+    console.log(`  ✓ Created PR #${response.data.number}: ${response.data.html_url}`);
+    return response.data.html_url;
+  } catch (error) {
+    console.error(`  Error creating pull request:`, error.message || error);
+    return null;
+  }
+}
+
+/**
+ * Process a single dependent repository
+ */
+async function processDependent(octokit, dependent, moduleName, version, dryRun) {
+  console.log(`\nProcessing dependent: ${dependent.repo}`);
+
+  const branchName = `deps/update-${moduleName}-${version}`;
+  const repoUrl = `https://github.com/${dependent.repo}.git`;
+  const localPath = join('/tmp', 'downstream-prs', dependent.repo);
+
+  if (!cloneOrUpdateRepo(repoUrl, localPath, dependent.baseBranch)) {
+    return false;
+  }
+
+  const { modified, changes } = applyFileReplacements(localPath, dependent.files, version);
+
+  if (!modified) {
+    console.log(`  No changes needed for ${dependent.repo}`);
+    return true;
+  }
+
+  if (dryRun) {
+    console.log(`  [DRY RUN] Would create PR with changes:`);
+    changes.forEach(c => console.log(`    - ${c}`));
+    return true;
+  }
+
+  if (!createAndPushBranch(localPath, branchName, moduleName, version, changes)) {
+    return false;
+  }
+
+  const prUrl = await createPullRequest(
+    octokit,
+    dependent.repo,
+    dependent.baseBranch,
+    branchName,
+    moduleName,
+    version,
+    changes
+  );
+
+  return prUrl !== null;
+}
+
+/**
+ * Main execution
+ */
+async function main() {
+  try {
+    const args = parseArgs();
+    console.log(`Creating downstream PRs for ${args.module} v${args.version}\n`);
+
+    const githubToken = process.env.GITHUB_TOKEN;
+    if (!githubToken && !args.dryRun) {
+      console.error('Error: GITHUB_TOKEN environment variable is required');
+      console.error('Set it with: export GITHUB_TOKEN=your_token_here');
+      process.exit(1);
+    }
+
+    const octokit = new Octokit({ auth: githubToken });
+
+    const config = readDependentsConfig(args.module);
+    if (!config || !config.dependents || config.dependents.length === 0) {
+      console.log('No dependents configured');
+      process.exit(0);
+    }
+
+    console.log(`Found ${config.dependents.length} dependent(s)`);
+
+    const results = await Promise.allSettled(
+      config.dependents.map(dep =>
+        processDependent(octokit, dep, args.module, args.version, args.dryRun)
+      )
+    );
+
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value).length;
+    const failed = results.length - successful;
+
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`Summary: ${successful} successful, ${failed} failed`);
+    console.log('='.repeat(60));
+
+    if (failed > 0) {
+      process.exit(1);
+    }
+
+  } catch (error) {
+    console.error('Error:', error.message || error);
+    process.exit(1);
+  }
+}
+
+main();

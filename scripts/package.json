@@ -6,12 +6,15 @@
   "description": "Build and sync scripts for Maven PNPM monorepo",
   "scripts": {
     "build": "tsc",
-    "maven:status": "tsx src/maven-status.ts",
-    "maven:sync": "tsx src/maven-sync.ts",
-    "maven:init": "tsx src/maven-init.ts"
+    "maven:status": "node src/maven-status.js",
+    "maven:sync": "node src/maven-sync.js",
+    "maven:init": "node src/maven-init.js",
+    "downstream:prs": "node src/downstream-prs.js"
   },
   "dependencies": {
-    "fast-xml-parser": "^4.5.0"
+    "@octokit/rest": "^21.0.0",
+    "fast-xml-parser": "^4.5.0",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

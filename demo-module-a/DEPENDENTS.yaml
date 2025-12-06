@@ -1,0 +1,10 @@
+# Downstream repositories that depend on this module
+# When this module is published, PRs will be automatically created to update these dependencies
+
+dependents:
+  - repo: ecruz165/maven-pnpm-monorepo-dependent-repo
+    baseBranch: main
+    files:
+      - path: pom.xml
+        search: '<version>0\.0\.1-SNAPSHOT</version>[\s]*<!--\s*demo-module-a\s*-->'
+        replace: '<version>{{version}}</version> <!-- demo-module-a -->'

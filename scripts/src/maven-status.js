@@ -12,18 +12,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-interface ModuleVersion {
-  name: string;
-  path: string;
-  packageVersion: string | null;
-  pomVersion: string | null;
-  match: boolean;
-}
-
 /**
  * Find all Maven modules from root pom.xml
  */
-function findMavenModules(rootDir: string): string[] {
+function findMavenModules(rootDir) {
   const rootPomPath = join(rootDir, 'pom.xml');
 
   if (!existsSync(rootPomPath)) {
@@ -33,7 +25,7 @@ function findMavenModules(rootDir: string): string[] {
   const rootPom = readFileSync(rootPomPath, 'utf8');
   const moduleMatches = rootPom.matchAll(/<module>([^<]+)<\/module>/g);
 
-  const modules: string[] = [];
+  const modules = [];
   for (const match of moduleMatches) {
     modules.push(match[1].trim());
   }
@@ -44,7 +36,7 @@ function findMavenModules(rootDir: string): string[] {
 /**
  * Read version from package.json
  */
-function readPackageVersion(modulePath: string): string | null {
+function readPackageVersion(modulePath) {
   const packageJsonPath = join(modulePath, 'package.json');
 
   if (!existsSync(packageJsonPath)) {
@@ -62,7 +54,7 @@ function readPackageVersion(modulePath: string): string | null {
 /**
  * Read version from pom.xml
  */
-function readPomVersion(modulePath: string): string | null {
+function readPomVersion(modulePath) {
   const pomPath = join(modulePath, 'pom.xml');
 
   if (!existsSync(pomPath)) {
@@ -86,7 +78,7 @@ function readPomVersion(modulePath: string): string | null {
 /**
  * Normalize version (remove -SNAPSHOT suffix)
  */
-function normalizeVersion(version: string | null): string | null {
+function normalizeVersion(version) {
   if (!version) return null;
   return version.replace(/-SNAPSHOT$/, '');
 }
@@ -94,9 +86,9 @@ function normalizeVersion(version: string | null): string | null {
 /**
  * Get version information for all modules
  */
-function getModuleVersions(rootDir: string): ModuleVersion[] {
+function getModuleVersions(rootDir) {
   const modules = findMavenModules(rootDir);
-  const results: ModuleVersion[] = [];
+  const results = [];
 
   for (const moduleName of modules) {
     const modulePath = join(rootDir, moduleName);
@@ -122,7 +114,7 @@ function getModuleVersions(rootDir: string): ModuleVersion[] {
 /**
  * Display version comparison table
  */
-function displayVersionTable(versions: ModuleVersion[]): void {
+function displayVersionTable(versions) {
   console.log('\nMaven-npm Version Status\n========================\n');
 
   // Calculate column widths

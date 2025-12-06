@@ -12,18 +12,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-interface ModuleSync {
-  name: string;
-  path: string;
-  packageVersion: string | null;
-  pomVersion: string | null;
-  needsSync: boolean;
-}
-
 /**
  * Find all Maven modules from root pom.xml
  */
-function findMavenModules(rootDir: string): string[] {
+function findMavenModules(rootDir) {
   const rootPomPath = join(rootDir, 'pom.xml');
 
   if (!existsSync(rootPomPath)) {
@@ -33,7 +25,7 @@ function findMavenModules(rootDir: string): string[] {
   const rootPom = readFileSync(rootPomPath, 'utf8');
   const moduleMatches = rootPom.matchAll(/<module>([^<]+)<\/module>/g);
 
-  const modules: string[] = [];
+  const modules = [];
   for (const match of moduleMatches) {
     modules.push(match[1].trim());
   }
@@ -44,7 +36,7 @@ function findMavenModules(rootDir: string): string[] {
 /**
  * Read version from package.json
  */
-function readPackageVersion(modulePath: string): string | null {
+function readPackageVersion(modulePath) {
   const packageJsonPath = join(modulePath, 'package.json');
 
   if (!existsSync(packageJsonPath)) {
@@ -62,7 +54,7 @@ function readPackageVersion(modulePath: string): string | null {
 /**
  * Read version from pom.xml
  */
-function readPomVersion(modulePath: string): string | null {
+function readPomVersion(modulePath) {
   const pomPath = join(modulePath, 'pom.xml');
 
   if (!existsSync(pomPath)) {
@@ -86,7 +78,7 @@ function readPomVersion(modulePath: string): string | null {
 /**
  * Update pom.xml version using direct XML modification
  */
-function updatePomVersion(modulePath: string, newVersion: string): boolean {
+function updatePomVersion(modulePath, newVersion) {
   const pomPath = join(modulePath, 'pom.xml');
 
   if (!existsSync(pomPath)) {
@@ -131,9 +123,9 @@ function updatePomVersion(modulePath: string, newVersion: string): boolean {
 /**
  * Get modules that need syncing
  */
-function getModulesToSync(rootDir: string): ModuleSync[] {
+function getModulesToSync(rootDir) {
   const modules = findMavenModules(rootDir);
-  const results: ModuleSync[] = [];
+  const results = [];
 
   for (const moduleName of modules) {
     const modulePath = join(rootDir, moduleName);
@@ -161,7 +153,7 @@ function getModulesToSync(rootDir: string): ModuleSync[] {
 /**
  * Sync versions
  */
-function syncVersions(modules: ModuleSync[]): void {
+function syncVersions(modules) {
   const modulesToSync = modules.filter(m => m.needsSync);
 
   if (modulesToSync.length === 0) {

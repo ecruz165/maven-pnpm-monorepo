@@ -5,3 +5,4 @@ A demo Spring Boot library module for testing selective versioning and publishin
 ## Features
 
 - Includes `getVersion()` utility method to retrieve the current version
+- Demonstrates downstream PR automation workflow

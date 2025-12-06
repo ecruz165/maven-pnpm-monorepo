@@ -50,6 +50,20 @@
         </dependencies>
     </dependencyManagement>
 
+    <!-- Distribution management for CodeArtifact -->
+    <distributionManagement>
+        <repository>
+            <id>codeartifact</id>
+            <name>AWS CodeArtifact</name>
+            <url>${env.CODEARTIFACT_URL}</url>
+        </repository>
+        <snapshotRepository>
+            <id>codeartifact</id>
+            <name>AWS CodeArtifact Snapshots</name>
+            <url>${env.CODEARTIFACT_URL}</url>
+        </snapshotRepository>
+    </distributionManagement>
+
     <build>
         <pluginManagement>
             <plugins>
@@ -80,9 +94,39 @@
                         </excludes>
                     </configuration>
                 </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>versions-maven-plugin</artifactId>
+                    <version>2.16.2</version>
+                    <configuration>
+                        <generateBackupPoms>false</generateBackupPoms>
+                    </configuration>
+                </plugin>
             </plugins>
         </pluginManagement>
     </build>
+
+    <!-- Profiles for CodeArtifact authentication -->
+    <profiles>
+        <profile>
+            <id>codeartifact</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <repositories>
+                <repository>
+                    <id>codeartifact</id>
+                    <url>${env.CODEARTIFACT_URL}</url>
+                </repository>
+            </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>codeartifact</id>
+                    <url>${env.CODEARTIFACT_URL}</url>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+    </profiles>
 
 </project>
 

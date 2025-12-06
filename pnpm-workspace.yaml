@@ -1,0 +1,5 @@
+packages:
+  - 'demo-module-a'
+  - 'demo-module-b'
+  - 'demo-module-c'
+  - 'scripts'

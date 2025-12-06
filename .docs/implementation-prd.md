@@ -91,7 +91,7 @@ A monorepo template that consolidates Maven modules into a single repository wit
 
 ### FR-1: Repository Structure
 
-**FR-1.1: Directory Layout**
+**FR-1.1: Directory Layout (Conventional Maven Structure)**
 
 ```
 repository/
@@ -101,31 +101,66 @@ repository/
 ├── .changeset/
 │   ├── config.json                 # Changesets configuration
 │   └── *.md                        # Pending changesets
-├── modules/
-│   └── {module-name}/
-│       ├── package.json            # npm package for version tracking
-│       ├── pom.xml                 # Maven module configuration
-│       ├── DEPENDENTS.yaml         # Downstream repository manifest
-│       └── src/                    # Java source code
-├── scripts/
-│   ├── package.json                # Build scripts package
-│   ├── tsconfig.json
+├── auth-commons/                   # Maven module at root level
+│   ├── package.json                # npm package for version tracking
+│   ├── pom.xml                     # Maven module configuration
+│   ├── DEPENDENTS.yaml             # Downstream repository manifest
 │   └── src/
-│       ├── changed-modules.ts      # Change detection
-│       ├── maven-sync.ts           # Version synchronization
-│       └── downstream-prs.ts       # PR creation
+├── logging-utils/                  # Another module
+│   ├── package.json
+│   ├── pom.xml
+│   └── src/
+├── data-access/                    # Another module
+│   ├── package.json
+│   ├── pom.xml
+│   └── src/
+├── scripts/                        # Build scripts (pnpm package)
+│   ├── package.json
+│   └── src/
+│       ├── changed-modules.js      # Change detection
+│       ├── parallel-build.js       # Parallel builds
+│       └── *.ts                    # Other TypeScript scripts
 └── .github/workflows/
     └── release.yml                 # CI/CD pipeline
 ```
 
-**FR-1.2: Module Requirements**
+**FR-1.2: pnpm Workspace Configuration**
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  # List each Maven module explicitly
+  - 'auth-commons'
+  - 'logging-utils'
+  - 'data-access'
+  # Build scripts package
+  - 'scripts'
+```
+
+**FR-1.3: Module Requirements**
 
 Each module MUST have:
 - `pom.xml` with independent version (not inherited from parent)
 - `package.json` with matching version for Changesets
 - `DEPENDENTS.yaml` listing downstream consumers (optional)
 
-**FR-1.3: Parent POM**
+**FR-1.4: Parent POM**
+
+```xml
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.yourcompany.libs</groupId>
+    <artifactId>libs-parent</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    
+    <modules>
+        <module>auth-commons</module>
+        <module>logging-utils</module>
+        <module>data-access</module>
+    </modules>
+</project>
+```
 
 The parent POM MUST:
 - Define common dependencies and plugin versions
@@ -153,11 +188,11 @@ Input:
   --output <dir>      Write troubleshooting artifacts
 
 Output (default):
-  modules/auth-commons
-  modules/logging-utils
+  auth-commons
+  logging-utils
 
 Output (--csv):
-  modules/auth-commons,modules/logging-utils
+  auth-commons,logging-utils
 ```
 
 **FR-2.3: Troubleshooting Artifacts**
@@ -250,7 +285,7 @@ node scripts/parallel-build.js
 node scripts/parallel-build.js --all -p 8
 
 # Build specific modules
-node scripts/parallel-build.js --modules modules/a,modules/b
+node scripts/parallel-build.js --modules auth-commons,logging-utils
 ```
 
 **FR-4.3: Parallel Build Output**
@@ -635,21 +670,21 @@ Build orchestration scripts MAY use:
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
+    
     <parent>
         <groupId>com.yourcompany.libs</groupId>
         <artifactId>libs-parent</artifactId>
         <version>1.0.0</version>
-        <relativePath>../../pom.xml</relativePath>
+        <relativePath>../pom.xml</relativePath>
     </parent>
-
-    <artifactId>module-name</artifactId>
+    
+    <artifactId>auth-commons</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
-
-    <name>Module Name</name>
-    <description>Description of the module</description>
-
+    
+    <name>Auth Commons</name>
+    <description>Common authentication utilities</description>
+    
     <dependencies>
         <!-- Module-specific dependencies -->
     </dependencies>
@@ -660,19 +695,19 @@ Build orchestration scripts MAY use:
 
 ```json
 {
-  "name": "@libs/module-name",
+  "name": "@libs/auth-commons",
   "version": "1.0.0",
   "private": true,
-  "description": "Description of the module",
+  "description": "Common authentication utilities",
   "maven": {
     "groupId": "com.yourcompany.libs",
-    "artifactId": "module-name",
+    "artifactId": "auth-commons",
     "packaging": "jar"
   },
   "scripts": {
-    "build": "cd ../.. && mvn -pl modules/module-name -am clean package -DskipTests",
-    "test": "cd ../.. && mvn -pl modules/module-name test",
-    "deploy": "cd ../.. && mvn -pl modules/module-name -am clean deploy -DskipTests"
+    "build": "cd .. && mvn -pl auth-commons -am clean package -DskipTests",
+    "test": "cd .. && mvn -pl auth-commons test",
+    "deploy": "cd .. && mvn -pl auth-commons -am clean deploy -DskipTests"
   }
 }
 ```
@@ -685,8 +720,8 @@ dependents:
     baseBranch: main
     files:
       - path: pom.xml
-        search: '<module-name.version>.*</module-name.version>'
-        replace: '<module-name.version>{{version}}</module-name.version>'
+        search: '<auth-commons.version>.*</auth-commons.version>'
+        replace: '<auth-commons.version>{{version}}</auth-commons.version>'
 ```
 
 ---

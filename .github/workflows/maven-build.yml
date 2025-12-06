@@ -24,6 +24,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      checks: write
 
     steps:
       - name: Checkout code
@@ -44,7 +45,6 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - name: Get pnpm store directory

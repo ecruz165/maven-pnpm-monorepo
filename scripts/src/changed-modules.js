@@ -69,15 +69,23 @@ function findMavenModules(rootDir) {
  */
 function getChangedFiles(baseBranch) {
   try {
-    // First try to fetch the base branch
-    try {
-      execSync(`git fetch origin ${baseBranch}:${baseBranch}`, { stdio: 'pipe' });
-    } catch (e) {
-      // Branch might already exist locally
+    // In CI on push events, compare current commit to previous commit
+    // Otherwise compare to base branch
+    let diffCommand;
+
+    if (process.env.CI && process.env.GITHUB_EVENT_NAME === 'push') {
+      // CI push event: compare to previous commit
+      diffCommand = 'git diff --name-only HEAD~1';
+    } else {
+      // Local or PR: compare to base branch
+      try {
+        execSync(`git fetch origin ${baseBranch}:${baseBranch}`, { stdio: 'pipe' });
+      } catch (e) {
+        // Branch might already exist locally
+      }
+      diffCommand = `git diff --name-only ${baseBranch}...HEAD`;
     }
 
-    // Get changed files compared to base branch
-    const diffCommand = `git diff --name-only ${baseBranch}...HEAD`;
     const output = execSync(diffCommand, { encoding: 'utf8' });
 
     return output
@@ -85,7 +93,7 @@ function getChangedFiles(baseBranch) {
       .map(f => f.trim())
       .filter(f => f.length > 0);
   } catch (error) {
-    // If base branch doesn't exist, compare with HEAD
+    // Fallback: compare with HEAD (uncommitted changes)
     try {
       const output = execSync('git diff --name-only HEAD', { encoding: 'utf8' });
       return output

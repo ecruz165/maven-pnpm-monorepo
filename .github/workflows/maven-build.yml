@@ -1,10 +1,6 @@
-name: Maven Build & Publish
+name: PR Validation
 
 on:
-  push:
-    branches:
-      - main
-      - develop
   pull_request:
     branches:
       - main
@@ -15,20 +11,20 @@ env:
   JAVA_VERSION: '21'
   JAVA_DISTRIBUTION: 'corretto'
   NODE_VERSION: '20'
-  PNPM_VERSION: '9'
 
 jobs:
-  build:
-    name: Build Maven Modules
+  validate:
+    name: Build & Test
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
       checks: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
@@ -47,48 +43,41 @@ jobs:
         with:
           run_install: false
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
       - name: Install pnpm dependencies
         run: pnpm install
 
-      - name: Configure Maven settings for GitHub Packages
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml << 'EOF'
-          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
-                                        http://maven.apache.org/xsd/settings-1.0.0.xsd">
-            <servers>
-              <server>
-                <id>github</id>
-                <username>${env.GITHUB_ACTOR}</username>
-                <password>${env.GITHUB_TOKEN}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
+      - name: Verify version sync
+        run: pnpm maven:status
 
-      - name: Build with Maven
-        run: mvn clean install -DskipTests
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Detect changed modules
+        id: changes
+        run: |
+          CHANGED=$(node scripts/src/changed-modules.js --csv || echo "")
+          if [ -z "$CHANGED" ]; then
+            echo "modules=all" >> $GITHUB_OUTPUT
+            echo "No specific changes, building all"
+          else
+            echo "modules=$CHANGED" >> $GITHUB_OUTPUT
+            echo "Changed modules: $CHANGED"
+          fi
+
+      - name: Build changed modules
+        run: |
+          if [ "${{ steps.changes.outputs.modules }}" = "all" ]; then
+            echo "Building all modules"
+            mvn clean install -DskipTests
+          else
+            echo "Building changed modules: ${{ steps.changes.outputs.modules }}"
+            mvn -pl "${{ steps.changes.outputs.modules }}" -am clean install -DskipTests
+          fi
 
       - name: Run tests
-        run: mvn test
+        run: |
+          if [ "${{ steps.changes.outputs.modules }}" = "all" ]; then
+            mvn test
+          else
+            mvn -pl "${{ steps.changes.outputs.modules }}" -am test
+          fi
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
@@ -107,55 +96,13 @@ jobs:
             */target/*.war
           retention-days: 7
 
-  publish:
-    name: Publish to GitHub Packages
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: 'maven'
-
-      - name: Configure Maven settings for GitHub Packages
+      - name: Summary
         run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml << 'EOF'
-          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
-                                        http://maven.apache.org/xsd/settings-1.0.0.xsd">
-            <servers>
-              <server>
-                <id>github</id>
-                <username>${env.GITHUB_ACTOR}</username>
-                <password>${env.GITHUB_TOKEN}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
-
-      - name: Publish to GitHub Packages
-        run: mvn deploy -DskipTests
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create deployment summary
-        run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Artifacts published to GitHub Packages" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Actor:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.changes.outputs.modules }}" = "all" ]; then
+            echo "✅ All modules built and tested successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Changed modules built and tested successfully" >> $GITHUB_STEP_SUMMARY
+            echo "**Modules:** \`${{ steps.changes.outputs.modules }}\`" >> $GITHUB_STEP_SUMMARY
+          fi

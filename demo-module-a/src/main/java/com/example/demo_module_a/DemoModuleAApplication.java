@@ -11,7 +11,8 @@ public class DemoModuleAApplication {
 	}
 
 	/**
-	 * Utility method to get the module version
+	 * Utility method to get the module version.
+	 * This method returns the current version of demo-module-a.
 	 * @return the module version string
 	 */
 	public static String getVersion() {

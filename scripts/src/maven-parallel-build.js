@@ -2,7 +2,6 @@
 
 /**
  * Parallel Maven build with colored output
- * Usage: node parallel-build.js [--all] [--modules m1,m2] [-p 4] [--with-tests]
  */
 
 import { spawn, execSync } from 'child_process';
@@ -10,6 +9,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { Command } from 'commander';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,40 +27,32 @@ const BOLD = '\x1b[1m';
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
 
-/**
- * Parse CLI arguments
- */
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const options = {
-    maxParallel: 4,
-    all: false,
-    modules: [],
-    skipTests: true,
-    goal: 'install',
-    offline: false
-  };
+const program = new Command();
 
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--max-parallel' || args[i] === '-p') {
-      options.maxParallel = parseInt(args[++i], 10);
-    } else if (args[i] === '--all' || args[i] === '-a') {
-      options.all = true;
-    } else if (args[i] === '--modules' || args[i] === '-m') {
-      options.modules = args[++i].split(',').map(m => m.trim());
-    } else if (args[i] === '--with-tests') {
-      options.skipTests = false;
-    } else if (args[i] === '--skip-tests') {
-      options.skipTests = true;
-    } else if (args[i] === '--goal' || args[i] === '-g') {
-      options.goal = args[++i];
-    } else if (args[i] === '--offline' || args[i] === '-o') {
-      options.offline = true;
-    }
-  }
+program
+  .name('maven-parallel-build')
+  .description('Parallel Maven build with colored output')
+  .version('1.0.0')
+  .option('-p, --max-parallel <number>', 'Maximum parallel builds', '4')
+  .option('-a, --all', 'Build all modules', false)
+  .option('-m, --modules <modules>', 'Comma-separated list of modules to build')
+  .option('--with-tests', 'Run tests during build', false)
+  .option('--skip-tests', 'Skip tests during build (default)', true)
+  .option('-g, --goal <goal>', 'Maven goal to execute', 'install')
+  .option('-o, --offline', 'Run Maven in offline mode', false)
+  .parse(process.argv);
 
-  return options;
-}
+const opts = program.opts();
+
+// Parse options
+const options = {
+  maxParallel: parseInt(opts.maxParallel, 10),
+  all: opts.all,
+  modules: opts.modules ? opts.modules.split(',').map(m => m.trim()) : [],
+  skipTests: opts.withTests ? false : true,
+  goal: opts.goal,
+  offline: opts.offline
+};
 
 /**
  * Find all Maven modules
@@ -296,7 +288,6 @@ function printSummary(results) {
  */
 async function main() {
   try {
-    const options = parseArgs();
     const rootDir = resolve(__dirname, '../..');
 
     let modulesToBuild;

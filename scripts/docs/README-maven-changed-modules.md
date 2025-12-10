@@ -1,4 +1,4 @@
-# changed-modules.js
+# maven-changed-modules.js
 
 Detects which Maven modules have changed based on git diff analysis.
 
@@ -12,16 +12,16 @@ This script analyzes git diffs to determine which Maven modules have been modifi
 
 ```bash
 # Detect changed modules (default output: space-separated)
-node scripts/src/changed-modules.js
+node scripts/src/maven-changed-modules.js
 
 # Output as CSV
-node scripts/src/changed-modules.js --csv
+node scripts/src/maven-changed-modules.js --csv
 
 # Compare against a specific branch
-node scripts/src/changed-modules.js --base develop
+node scripts/src/maven-changed-modules.js --base develop
 
 # Write results to a file
-node scripts/src/changed-modules.js --output changed.txt
+node scripts/src/maven-changed-modules.js --output changed.txt
 ```
 
 ### Via pnpm Scripts
@@ -108,7 +108,7 @@ Exit code: `1`
 
 ```bash
 # In GitHub Actions
-CHANGED=$(node scripts/src/changed-modules.js --csv)
+CHANGED=$(node scripts/src/maven-changed-modules.js --csv)
 if [ -n "$CHANGED" ]; then
   echo "Changed modules: $CHANGED"
   # Proceed with build
@@ -119,11 +119,11 @@ fi
 
 ```bash
 # Check what would be built
-node scripts/src/changed-modules.js --base main
+node scripts/src/maven-changed-modules.js --base main
 # Output: demo-module-a
 
 # Build only changed modules
-mvn clean install -pl $(node scripts/src/changed-modules.js)
+mvn clean install -pl $(node scripts/src/maven-changed-modules.js)
 ```
 
 ### Example 3: PR validation
@@ -145,7 +145,7 @@ This script is used in `.github/workflows/version-and-publish.yml`:
 - name: Detect changed modules
   id: detect
   run: |
-    CHANGED=$(node scripts/src/changed-modules.js --csv || echo "")
+    CHANGED=$(node scripts/src/maven-changed-modules.js --csv || echo "")
     echo "modules=$CHANGED" >> $GITHUB_OUTPUT
 ```
 
@@ -192,5 +192,5 @@ This script is used in `.github/workflows/version-and-publish.yml`:
 ## Related Scripts
 
 - **maven-sync.js** - Syncs versions after detection
-- **parallel-build.js** - Builds detected modules in parallel
+- **maven-parallel-build.js** - Builds detected modules in parallel
 - **maven-status.js** - Shows sync status for detected modules

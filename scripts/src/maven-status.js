@@ -8,9 +8,23 @@ import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { XMLParser } from 'fast-xml-parser';
 import { fileURLToPath } from 'url';
+import { Command } from 'commander';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const program = new Command();
+
+program
+  .name('maven-status')
+  .description('Display version comparison between package.json and pom.xml')
+  .version('1.0.0')
+  .option('-m, --module <name>', 'Show status for a specific module only')
+  .option('-j, --json', 'Output as JSON', false)
+  .option('-q, --quiet', 'Only output if there are mismatches', false)
+  .parse(process.argv);
+
+const options = program.opts();
 
 /**
  * Find all Maven modules from root pom.xml
@@ -114,7 +128,23 @@ function getModuleVersions(rootDir) {
 /**
  * Display version comparison table
  */
-function displayVersionTable(versions) {
+function displayVersionTable(versions, opts) {
+  // JSON output
+  if (opts.json) {
+    console.log(JSON.stringify(versions, null, 2));
+    const mismatchModules = versions.filter(v => !v.match).length;
+    if (mismatchModules > 0) {
+      process.exit(1);
+    }
+    return;
+  }
+
+  // Quiet mode - only output if mismatches
+  const mismatchModules = versions.filter(v => !v.match).length;
+  if (opts.quiet && mismatchModules === 0) {
+    return;
+  }
+
   console.log('\nMaven-npm Version Status\n========================\n');
 
   // Calculate column widths
@@ -152,7 +182,6 @@ function displayVersionTable(versions) {
   // Summary
   const totalModules = versions.length;
   const matchingModules = versions.filter(v => v.match).length;
-  const mismatchModules = totalModules - matchingModules;
 
   console.log('\n' + '='.repeat(namePad + pkgPad + pomPad + 10));
   console.log(`Total: ${totalModules} | Matching: ${matchingModules} | Mismatches: ${mismatchModules}\n`);
@@ -168,8 +197,18 @@ function displayVersionTable(versions) {
 function main() {
   try {
     const rootDir = join(__dirname, '../..');
-    const versions = getModuleVersions(rootDir);
-    displayVersionTable(versions);
+    let versions = getModuleVersions(rootDir);
+
+    // Filter to specific module if requested
+    if (options.module) {
+      versions = versions.filter(v => v.name === options.module);
+      if (versions.length === 0) {
+        console.error(`Error: Module '${options.module}' not found`);
+        process.exit(1);
+      }
+    }
+
+    displayVersionTable(versions, options);
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : error);
     process.exit(1);

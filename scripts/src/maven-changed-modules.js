@@ -2,36 +2,25 @@
 
 /**
  * Detects changed Maven modules based on git diff
- * Usage: node changed-modules.js [--base main] [--csv] [--output dir]
  */
 
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { Command } from 'commander';
 
-/**
- * Parse CLI arguments
- */
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const options = {
-    base: 'main',
-    csv: false,
-    output: null
-  };
+const program = new Command();
 
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--base' && i + 1 < args.length) {
-      options.base = args[++i];
-    } else if (args[i] === '--csv') {
-      options.csv = true;
-    } else if (args[i] === '--output' && i + 1 < args.length) {
-      options.output = args[++i];
-    }
-  }
+program
+  .name('maven-changed-modules')
+  .description('Detects changed Maven modules based on git diff')
+  .version('1.0.0')
+  .option('-b, --base <branch>', 'Base branch to compare against', 'main')
+  .option('-c, --csv', 'Output as comma-separated values', false)
+  .option('-o, --output <dir>', 'Write results to directory')
+  .parse(process.argv);
 
-  return options;
-}
+const options = program.opts();
 
 /**
  * Find all Maven modules by locating pom.xml files
@@ -189,7 +178,6 @@ ${data.allModules.map(m => `  - ${m.name}`).join('\n')}
  */
 function main() {
   try {
-    const options = parseArgs();
     const rootDir = process.cwd();
 
     // Find all Maven modules

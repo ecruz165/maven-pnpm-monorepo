@@ -8,9 +8,23 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { XMLParser } from 'fast-xml-parser';
 import { fileURLToPath } from 'url';
+import { Command } from 'commander';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const program = new Command();
+
+program
+  .name('maven-init')
+  .description('Generate package.json from pom.xml for modules missing package.json')
+  .version('1.0.0')
+  .option('-f, --force', 'Overwrite existing package.json files', false)
+  .option('-m, --module <name>', 'Initialize only a specific module')
+  .option('-d, --dry-run', 'Show what would be done without making changes', false)
+  .parse(process.argv);
+
+const options = program.opts();
 
 /**
  * Find all Maven modules from root pom.xml
@@ -106,8 +120,18 @@ function generatePackageJson(moduleName, metadata) {
 /**
  * Initialize package.json for modules without one
  */
-function initializeModules(rootDir) {
-  const modules = findMavenModules(rootDir);
+function initializeModules(rootDir, opts) {
+  let modules = findMavenModules(rootDir);
+
+  // Filter to specific module if requested
+  if (opts.module) {
+    modules = modules.filter(m => m === opts.module);
+    if (modules.length === 0) {
+      console.error(`Error: Module '${opts.module}' not found`);
+      process.exit(1);
+    }
+  }
+
   let createdCount = 0;
   let skippedCount = 0;
 
@@ -117,8 +141,8 @@ function initializeModules(rootDir) {
     const modulePath = join(rootDir, moduleName);
     const packageJsonPath = join(modulePath, 'package.json');
 
-    // Skip if package.json already exists
-    if (existsSync(packageJsonPath)) {
+    // Skip if package.json already exists (unless --force)
+    if (existsSync(packageJsonPath) && !opts.force) {
       console.log(`✓ ${moduleName}: package.json already exists`);
       skippedCount++;
       continue;
@@ -131,8 +155,16 @@ function initializeModules(rootDir) {
       continue;
     }
 
-    // Generate and write package.json
+    // Generate package.json
     const packageJson = generatePackageJson(moduleName, metadata);
+
+    if (opts.dryRun) {
+      console.log(`[DRY RUN] ${moduleName}: Would create package.json (${metadata.version} → ${packageJson.version})`);
+      createdCount++;
+      continue;
+    }
+
+    // Write package.json
     writeFileSync(
       packageJsonPath,
       JSON.stringify(packageJson, null, 2) + '\n',
@@ -153,7 +185,7 @@ function initializeModules(rootDir) {
 function main() {
   try {
     const rootDir = join(__dirname, '../..');
-    initializeModules(rootDir);
+    initializeModules(rootDir, options);
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : error);
     process.exit(1);

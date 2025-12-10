@@ -10,21 +10,20 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
-    "build:parallel": "node scripts/src/parallel-build.js",
-    "build:parallel:all": "node scripts/src/parallel-build.js --all",
-    "build:changed": "node scripts/src/parallel-build.js",
     "test": "pnpm -r run test",
     "maven:sync": "pnpm -F @libs/scripts maven:sync",
     "maven:status": "pnpm -F @libs/scripts maven:status",
     "maven:init": "pnpm -F @libs/scripts maven:init",
-    "downstream:prs": "pnpm -F @libs/scripts downstream:prs",
+    "maven:downstream-prs": "pnpm -F @libs/scripts maven:downstream-prs",
+    "maven:changed-modules": "pnpm -F @libs/scripts maven:changed-modules",
+    "maven:parallel-build": "node scripts/src/maven-parallel-build.js",
+    "maven:parallel-build:all": "node scripts/src/maven-parallel-build.js --all",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish",
     "clean": "pnpm -r run clean && rm -rf node_modules",
     "format": "pnpm -r run format",
-    "lint": "pnpm -r run lint",
-    "detect:changes": "node scripts/src/changed-modules.js"
+    "lint": "pnpm -r run lint"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

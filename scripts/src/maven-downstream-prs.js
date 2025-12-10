@@ -2,7 +2,6 @@
 
 /**
  * Create pull requests in downstream repositories when a module is published
- * Usage: node downstream-prs.js --module demo-module-a --version 0.0.2
  */
 
 import { Octokit } from '@octokit/rest';
@@ -11,39 +10,23 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import YAML from 'yaml';
+import { Command } from 'commander';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/**
- * Parse CLI arguments
- */
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const options = {
-    module: '',
-    version: '',
-    dryRun: false
-  };
+const program = new Command();
 
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--module' && i + 1 < args.length) {
-      options.module = args[++i];
-    } else if (args[i] === '--version' && i + 1 < args.length) {
-      options.version = args[++i];
-    } else if (args[i] === '--dry-run') {
-      options.dryRun = true;
-    }
-  }
+program
+  .name('maven-downstream-prs')
+  .description('Create pull requests in downstream repositories when a module is published')
+  .version('1.0.0')
+  .requiredOption('-m, --module <name>', 'Module name (e.g., demo-module-a)')
+  .requiredOption('--target-version <version>', 'Version to update to (e.g., 0.0.6-SNAPSHOT)')
+  .option('-d, --dry-run', 'Preview changes without creating PR', false)
+  .parse(process.argv);
 
-  if (!options.module || !options.version) {
-    console.error('Error: --module and --version are required');
-    console.error('Usage: node downstream-prs.js --module demo-module-a --version 0.0.2');
-    process.exit(1);
-  }
-
-  return options;
-}
+const options = program.opts();
 
 /**
  * Read DEPENDENTS.yaml from module directory
@@ -245,11 +228,11 @@ async function processDependent(octokit, dependent, moduleName, version, dryRun,
  */
 async function main() {
   try {
-    const args = parseArgs();
-    console.log(`Creating downstream PRs for ${args.module} v${args.version}\n`);
+    const targetVersion = options.targetVersion;
+    console.log(`Creating downstream PRs for ${options.module} v${targetVersion}\n`);
 
     const githubToken = process.env.GITHUB_TOKEN;
-    if (!githubToken && !args.dryRun) {
+    if (!githubToken && !options.dryRun) {
       console.error('Error: GITHUB_TOKEN environment variable is required');
       console.error('Set it with: export GITHUB_TOKEN=your_token_here');
       process.exit(1);
@@ -257,7 +240,7 @@ async function main() {
 
     const octokit = new Octokit({ auth: githubToken });
 
-    const config = readDependentsConfig(args.module);
+    const config = readDependentsConfig(options.module);
     if (!config || !config.dependents || config.dependents.length === 0) {
       console.log('No dependents configured');
       process.exit(0);
@@ -267,7 +250,7 @@ async function main() {
 
     const results = await Promise.allSettled(
       config.dependents.map(dep =>
-        processDependent(octokit, dep, args.module, args.version, args.dryRun, githubToken)
+        processDependent(octokit, dep, options.module, targetVersion, options.dryRun, githubToken)
       )
     );
 

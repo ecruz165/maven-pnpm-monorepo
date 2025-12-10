@@ -32,6 +32,9 @@ importers:
       '@octokit/rest':
         specifier: ^21.0.0
         version: 21.1.1
+      commander:
+        specifier: ^14.0.2
+        version: 14.0.2
       fast-xml-parser:
         specifier: ^4.5.0
         version: 4.5.3
@@ -392,6 +395,10 @@ packages:
   ci-info@3.9.0:
     resolution: {integrity: sha512-NIxF55hv4nSqQswkAeiOi1r83xy8JldOFDTWiug55KBu9Jnblncd2U6ViHmYgHf01TPZS77NJBhBMKdWj9HQMQ==}
     engines: {node: '>=8'}
+
+  commander@14.0.2:
+    resolution: {integrity: sha512-TywoWNNRbhoD0BXs1P3ZEScW8W5iKrnbithIl0YH+uCmBd0QpPOA8yc82DS3BIE5Ma6FnBVUsJ7wVUDz4dvOWQ==}
+    engines: {node: '>=20'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -1053,6 +1060,8 @@ snapshots:
   chardet@2.1.1: {}
 
   ci-info@3.9.0: {}
+
+  commander@14.0.2: {}
 
   cross-spawn@7.0.6:
     dependencies:

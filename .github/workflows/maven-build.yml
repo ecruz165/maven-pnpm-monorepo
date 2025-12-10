@@ -54,13 +54,13 @@ jobs:
 
       - name: Build changed modules in parallel
         run: |
-          # parallel-build.js auto-detects changes, builds all if no changes
-          node scripts/src/parallel-build.js --max-parallel 4 --goal install
+          # maven-parallel-build.js auto-detects changes, builds all if no changes
+          node scripts/src/maven-parallel-build.js --max-parallel 4 --goal install
 
       - name: Run tests on changed modules
         run: |
-          # Run tests with parallel-build.js
-          node scripts/src/parallel-build.js --max-parallel 4 --goal test
+          # Run tests with maven-parallel-build.js
+          node scripts/src/maven-parallel-build.js --max-parallel 4 --goal test
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

@@ -8,9 +8,23 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import { fileURLToPath } from 'url';
+import { Command } from 'commander';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const program = new Command();
+
+program
+  .name('maven-sync')
+  .description('Sync pom.xml versions to match package.json versions')
+  .version('1.0.0')
+  .option('-m, --module <name>', 'Sync only a specific module')
+  .option('-d, --dry-run', 'Show what would be done without making changes', false)
+  .option('-r, --reverse', 'Sync package.json to match pom.xml (reverse direction)', false)
+  .parse(process.argv);
+
+const options = program.opts();
 
 /**
  * Find all Maven modules from root pom.xml
@@ -153,7 +167,7 @@ function getModulesToSync(rootDir) {
 /**
  * Sync versions
  */
-function syncVersions(modules) {
+function syncVersions(modules, opts) {
   const modulesToSync = modules.filter(m => m.needsSync);
 
   if (modulesToSync.length === 0) {
@@ -168,7 +182,15 @@ function syncVersions(modules) {
 
   for (const module of modulesToSync) {
     if (module.packageVersion) {
-      console.log(`Syncing ${module.name}: ${module.pomVersion} → ${module.packageVersion}-SNAPSHOT`);
+      const targetVersion = `${module.packageVersion}-SNAPSHOT`;
+
+      if (opts.dryRun) {
+        console.log(`[DRY RUN] Would sync ${module.name}: ${module.pomVersion} → ${targetVersion}`);
+        syncedCount++;
+        continue;
+      }
+
+      console.log(`Syncing ${module.name}: ${module.pomVersion} → ${targetVersion}`);
 
       if (updatePomVersion(module.path, module.packageVersion)) {
         syncedCount++;
@@ -193,8 +215,18 @@ function syncVersions(modules) {
 function main() {
   try {
     const rootDir = join(__dirname, '../..');
-    const modules = getModulesToSync(rootDir);
-    syncVersions(modules);
+    let modules = getModulesToSync(rootDir);
+
+    // Filter to specific module if requested
+    if (options.module) {
+      modules = modules.filter(m => m.name === options.module);
+      if (modules.length === 0) {
+        console.error(`Error: Module '${options.module}' not found`);
+        process.exit(1);
+      }
+    }
+
+    syncVersions(modules, options);
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : error);
     process.exit(1);

@@ -1,4 +1,4 @@
-# parallel-build.js
+# maven-parallel-build.js
 
 Builds multiple Maven modules in parallel with configurable concurrency and dependency resolution.
 
@@ -16,16 +16,16 @@ Accelerates Maven builds by:
 
 ```bash
 # Build modules with default settings
-node scripts/src/parallel-build.js --modules "demo-module-a,demo-module-b"
+node scripts/src/maven-parallel-build.js --modules "demo-module-a,demo-module-b"
 
 # Specify Maven goal
-node scripts/src/parallel-build.js --modules "demo-module-a,demo-module-b" --goal install
+node scripts/src/maven-parallel-build.js --modules "demo-module-a,demo-module-b" --goal install
 
 # Control concurrency
-node scripts/src/parallel-build.js --modules "demo-module-a,demo-module-b" --max-parallel 2
+node scripts/src/maven-parallel-build.js --modules "demo-module-a,demo-module-b" --max-parallel 2
 
 # Skip tests
-node scripts/src/parallel-build.js --modules "demo-module-a,demo-module-b" --skip-tests
+node scripts/src/maven-parallel-build.js --modules "demo-module-a,demo-module-b" --skip-tests
 ```
 
 ### Via pnpm Scripts
@@ -183,7 +183,7 @@ Exit code: `1`
 **Missing modules argument:**
 ```
 Error: --modules argument is required
-Usage: node parallel-build.js --modules "module-a,module-b" [options]
+Usage: node maven-parallel-build.js --modules "module-a,module-b" [options]
 ```
 Exit code: `1`
 
@@ -285,7 +285,7 @@ Used in `.github/workflows/version-and-publish.yml`:
 - name: Build changed modules in parallel
   run: |
     MODULES="${{ needs.detect-changes.outputs.changed-modules }}"
-    node scripts/src/parallel-build.js \
+    node scripts/src/maven-parallel-build.js \
       --modules "$MODULES" \
       --max-parallel 4 \
       --goal install
@@ -297,9 +297,9 @@ Used in `.github/workflows/version-and-publish.yml`:
 
 ```bash
 # Build only changed modules, skip tests
-CHANGED=$(node scripts/src/changed-modules.js --csv)
+CHANGED=$(node scripts/src/maven-changed-modules.js --csv)
 
-node scripts/src/parallel-build.js \
+node scripts/src/maven-parallel-build.js \
   --modules "$CHANGED" \
   --goal install \
   --skip-tests \
@@ -310,7 +310,7 @@ node scripts/src/parallel-build.js \
 
 ```bash
 # Build with tests, conservative parallelism
-node scripts/src/parallel-build.js \
+node scripts/src/maven-parallel-build.js \
   --modules "demo-module-a,demo-module-b" \
   --goal package \
   --max-parallel 2
@@ -320,7 +320,7 @@ node scripts/src/parallel-build.js \
 
 ```bash
 # Deploy specific modules
-node scripts/src/parallel-build.js \
+node scripts/src/maven-parallel-build.js \
   --modules "demo-module-a,demo-module-b" \
   --goal deploy \
   --skip-tests \
@@ -331,7 +331,7 @@ node scripts/src/parallel-build.js \
 
 ```bash
 # Run tests in parallel
-node scripts/src/parallel-build.js \
+node scripts/src/maven-parallel-build.js \
   --modules "demo-module-a,demo-module-b,demo-module-c" \
   --goal test \
   --max-parallel 6
@@ -341,7 +341,7 @@ node scripts/src/parallel-build.js \
 
 ```bash
 # Build one at a time
-node scripts/src/parallel-build.js \
+node scripts/src/maven-parallel-build.js \
   --modules "demo-module-a,demo-module-b" \
   --max-parallel 1
 ```
@@ -356,7 +356,7 @@ mvn clean install
 
 **Parallel Build:**
 ```bash
-node scripts/src/parallel-build.js \
+node scripts/src/maven-parallel-build.js \
   --modules "demo-module-a,demo-module-b,demo-module-c" \
   --goal install \
   --max-parallel 4
@@ -425,11 +425,11 @@ node scripts/src/parallel-build.js \
 **Example:**
 ```bash
 export MAVEN_OPTS="-Xmx2048m -XX:MaxPermSize=512m"
-node scripts/src/parallel-build.js --modules "demo-module-a,demo-module-b"
+node scripts/src/maven-parallel-build.js --modules "demo-module-a,demo-module-b"
 ```
 
 ## Related Scripts
 
-- **changed-modules.js** - Identifies which modules to build
+- **maven-changed-modules.js** - Identifies which modules to build
 - **maven-sync.js** - Syncs versions before build
 - **maven-status.js** - Validates sync before build

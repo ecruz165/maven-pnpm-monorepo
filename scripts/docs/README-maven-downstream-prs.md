@@ -1,4 +1,4 @@
-# downstream-prs.js
+# maven-downstream-prs.js
 
 Creates pull requests in downstream/dependent repositories when a module version is published.
 
@@ -16,20 +16,20 @@ Automates the process of updating dependencies in downstream repositories by:
 
 ```bash
 # Create downstream PR for a module version
-node scripts/src/downstream-prs.js --module demo-module-a --version 0.0.6
+node scripts/src/maven-downstream-prs.js --module demo-module-a --version 0.0.6
 
 # With SNAPSHOT suffix
-node scripts/src/downstream-prs.js --module demo-module-a --version 0.0.6-SNAPSHOT
+node scripts/src/maven-downstream-prs.js --module demo-module-a --version 0.0.6-SNAPSHOT
 
 # Dry run (preview changes without creating PR)
-node scripts/src/downstream-prs.js --module demo-module-a --version 0.0.6 --dry-run
+node scripts/src/maven-downstream-prs.js --module demo-module-a --version 0.0.6 --dry-run
 ```
 
 ### Via pnpm Scripts
 
 ```bash
 # Run downstream PR automation (requires env vars)
-pnpm downstream:prs
+pnpm maven:downstream-prs
 ```
 
 ## Command-Line Options
@@ -148,7 +148,7 @@ Exit code: `0`
 **Missing arguments:**
 ```
 Error: --module and --version are required
-Usage: node downstream-prs.js --module demo-module-a --version 0.0.2
+Usage: node maven-downstream-prs.js --module demo-module-a --version 0.0.2
 ```
 Exit code: `1`
 
@@ -233,7 +233,7 @@ dependents:
 
 **Command:**
 ```bash
-node scripts/src/downstream-prs.js --module mylib --version 1.1.0-SNAPSHOT
+node scripts/src/maven-downstream-prs.js --module mylib --version 1.1.0-SNAPSHOT
 ```
 
 **After (pom.xml):**
@@ -301,7 +301,7 @@ Used in `.github/workflows/version-and-publish.yml`:
   run: |
     for MODULE in ${{ needs.detect-changes.outputs.changed-modules }}; do
       VERSION=$(cat "$MODULE/package.json" | jq -r '.version')
-      pnpm -F @libs/scripts downstream:prs --module "$MODULE" --version "${VERSION}-SNAPSHOT"
+      pnpm -F @libs/scripts maven:downstream-prs --module "$MODULE" --version "${VERSION}-SNAPSHOT"
     done
   env:
     GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}

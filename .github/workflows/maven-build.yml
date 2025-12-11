@@ -68,6 +68,8 @@ jobs:
         with:
           files: |
             **/target/surefire-reports/*.xml
+          check_run: false
+          action_fail_on_inconclusive: false
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

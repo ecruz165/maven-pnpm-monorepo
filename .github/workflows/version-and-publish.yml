@@ -119,20 +119,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build changed modules in parallel
+      - name: Build changed modules
         run: |
           MODULES="${{ needs.detect-changes.outputs.changed-modules }}"
-          echo "Building modules in parallel: $MODULES"
-          # Use maven CLI build command
-          node scripts/src/maven.js build --modules "$MODULES" --max-parallel 4 --goal install
+          echo "Building modules: $MODULES"
+          # Build using standard Maven with -pl for changed modules
+          # This handles dependencies correctly
+          mvn -pl "$MODULES" -am clean install -DskipTests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Test changed modules in parallel
+      - name: Test changed modules
         run: |
           MODULES="${{ needs.detect-changes.outputs.changed-modules }}"
-          # Use maven CLI build command for test execution
-          node scripts/src/maven.js build --modules "$MODULES" --max-parallel 4 --goal test --with-tests
+          # Run tests for changed modules
+          mvn -pl "$MODULES" test
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

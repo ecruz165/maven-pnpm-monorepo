@@ -6,12 +6,13 @@
   "description": "Build and sync scripts for Maven PNPM monorepo",
   "scripts": {
     "build": "tsc",
-    "maven:status": "node src/maven-status.js",
-    "maven:sync": "node src/maven-sync.js",
-    "maven:init": "node src/maven-init.js",
-    "maven:downstream-prs": "node src/maven-downstream-prs.js",
-    "maven:changed-modules": "node src/maven-changed-modules.js",
-    "maven:parallel-build": "node src/maven-parallel-build.js"
+    "maven": "node src/maven.js",
+    "maven:init": "node src/maven.js init",
+    "maven:status": "node src/maven.js status",
+    "maven:sync": "node src/maven.js sync",
+    "maven:changed": "node src/maven.js changed",
+    "maven:build": "node src/maven.js build",
+    "maven:downstream": "node src/maven.js downstream"
   },
   "dependencies": {
     "@octokit/rest": "^21.0.0",

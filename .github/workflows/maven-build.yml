@@ -19,6 +19,7 @@ jobs:
     permissions:
       contents: read
       checks: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -52,26 +53,37 @@ jobs:
       - name: Verify version sync
         run: pnpm maven:status
 
-      - name: Build changed modules in parallel
+      - name: Detect changed modules
+        id: detect-changes
         run: |
-          # maven-parallel-build.js auto-detects changes, builds all if no changes
-          node scripts/src/maven-parallel-build.js --max-parallel 4 --goal install
+          # Get changed modules (info messages go to stderr, module list to stdout)
+          CHANGED=$(node scripts/src/maven.js changed --csv 2>/dev/null || echo "")
+          if [ -z "$CHANGED" ]; then
+            echo "modules=" >> $GITHUB_OUTPUT
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No module changes detected"
+          else
+            echo "modules=$CHANGED" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changed modules: $CHANGED"
+          fi
 
-      - name: Run tests on changed modules
+      - name: Build and test modules
+        if: steps.detect-changes.outputs.has_changes == 'true'
         run: |
-          # Run tests with maven-parallel-build.js
-          node scripts/src/maven-parallel-build.js --max-parallel 4 --goal test
+          # Build all changed modules (includes tests)
+          ./mvnw -pl ${{ steps.detect-changes.outputs.modules }} -am clean install
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
+        if: always() && steps.detect-changes.outputs.has_changes == 'true'
         with:
           files: |
             **/target/surefire-reports/*.xml
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
-        if: success()
+        if: success() && steps.detect-changes.outputs.has_changes == 'true'
         with:
           name: maven-artifacts
           path: |
@@ -83,5 +95,9 @@ jobs:
         run: |
           echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Modules built and tested successfully using parallel builds" >> $GITHUB_STEP_SUMMARY
-          echo "**Build Strategy:** Changed modules auto-detected and built in parallel (max 4 concurrent)" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.detect-changes.outputs.has_changes }}" == "true" ]; then
+            echo "✅ Modules built and tested successfully" >> $GITHUB_STEP_SUMMARY
+            echo "**Changed Modules:** ${{ steps.detect-changes.outputs.modules }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ No module changes detected - skipped build" >> $GITHUB_STEP_SUMMARY
+          fi

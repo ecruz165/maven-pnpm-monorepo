@@ -368,15 +368,25 @@ function isImportantLine(line) {
     return ['BUILD', 'ERROR', 'Compiling', 'Tests run', 'Results :', 'FAILURE', 'SUCCESS', 'Downloaded', 'Installing', 'Uploading'].some(k => line.includes(k));
 }
 
+function getMavenCommand(rootDir) {
+    // Use Maven wrapper if available, otherwise fall back to mvn
+    const mvnwPath = join(rootDir, 'mvnw');
+    if (existsSync(mvnwPath)) {
+        return './mvnw';
+    }
+    return 'mvn';
+}
+
 function buildModule(moduleName, color, rootDir, options) {
     return new Promise((resolve) => {
         const startTime = Date.now();
         const prefix = `${color}[${moduleName}]${COLORS.RESET}`;
+        const mavenCmd = getMavenCommand(rootDir);
         const mavenArgs = ['-pl', moduleName, '-am', 'clean', options.goal];
         if (options.skipTests) mavenArgs.push('-DskipTests');
         if (options.offline) mavenArgs.push('--offline');
         console.log(`${prefix} ${getTimestamp()} Starting build...`);
-        const mvn = spawn('mvn', mavenArgs, {cwd: rootDir, shell: true});
+        const mvn = spawn(mavenCmd, mavenArgs, {cwd: rootDir, shell: true});
         mvn.stdout.on('data', (data) => {
             for (const line of data.toString().split('\n')) {
                 if (line.trim() && isImportantLine(line)) console.log(`${prefix} ${getTimestamp()} ${line.trim()}`);

@@ -59,34 +59,36 @@ RUN --mount=type=cache,target=/root/.pnpm-store \
     pnpm install --frozen-lockfile
 
 # -----------------------------------------------------------------------------
-# Build stage: Compile and test
+# Build stage: Compile and test using maven.js CLI
 # -----------------------------------------------------------------------------
 FROM deps AS build
 
 # Build arguments
 ARG MODULES=""
-ARG SKIP_TESTS=false
+ARG SKIP_TESTS=true
 ARG MAVEN_GOAL=install
 
 # Copy source code
 COPY . .
 
-# Build with cache mount for Maven repository
+# Build with cache mount for Maven repository using maven.js CLI
 RUN --mount=type=cache,target=/root/.m2/repository \
     if [ -n "$MODULES" ]; then \
       echo "Building modules: $MODULES" && \
-      ./mvnw -pl $MODULES -am clean $MAVEN_GOAL \
-        -DskipTests=$SKIP_TESTS \
-        -B -q; \
+      node scripts/src/maven.js build \
+        --modules "$MODULES" \
+        --goal $MAVEN_GOAL \
+        $([ "$SKIP_TESTS" = "true" ] && echo "--skip-tests" || echo "--with-tests"); \
     else \
       echo "Building all modules" && \
-      ./mvnw clean $MAVEN_GOAL \
-        -DskipTests=$SKIP_TESTS \
-        -B -q; \
+      node scripts/src/maven.js build \
+        --all \
+        --goal $MAVEN_GOAL \
+        $([ "$SKIP_TESTS" = "true" ] && echo "--skip-tests" || echo "--with-tests"); \
     fi
 
 # -----------------------------------------------------------------------------
-# Test stage: Run tests only
+# Test stage: Run tests only using maven.js CLI
 # -----------------------------------------------------------------------------
 FROM deps AS test
 
@@ -96,14 +98,20 @@ COPY . .
 # Build arguments
 ARG MODULES=""
 
-# Run tests with cache mount
+# Run tests with cache mount using maven.js CLI
 RUN --mount=type=cache,target=/root/.m2/repository \
     if [ -n "$MODULES" ]; then \
       echo "Testing modules: $MODULES" && \
-      ./mvnw -pl $MODULES -am clean test -B; \
+      node scripts/src/maven.js build \
+        --modules "$MODULES" \
+        --goal test \
+        --with-tests; \
     else \
       echo "Testing all modules" && \
-      ./mvnw clean test -B; \
+      node scripts/src/maven.js build \
+        --all \
+        --goal test \
+        --with-tests; \
     fi
 
 # -----------------------------------------------------------------------------

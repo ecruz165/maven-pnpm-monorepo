@@ -46,8 +46,8 @@ jobs:
       - name: Detect changed modules
         id: detect
         run: |
-          # Use our changed-modules script
-          CHANGED=$(node scripts/src/changed-modules.js --csv || echo "")
+          # Use our maven CLI changed command
+          CHANGED=$(node scripts/src/maven.js changed --csv 2>/dev/null || echo "")
 
           if [ -z "$CHANGED" ]; then
             echo "has-changes=false" >> $GITHUB_OUTPUT
@@ -123,16 +123,16 @@ jobs:
         run: |
           MODULES="${{ needs.detect-changes.outputs.changed-modules }}"
           echo "Building modules in parallel: $MODULES"
-          # Use parallel-build.js for faster builds
-          node scripts/src/parallel-build.js --modules "$MODULES" --max-parallel 4 --goal install
+          # Use maven CLI build command
+          node scripts/src/maven.js build --modules "$MODULES" --max-parallel 4 --goal install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test changed modules in parallel
         run: |
           MODULES="${{ needs.detect-changes.outputs.changed-modules }}"
-          # Use parallel-build.js for parallel test execution
-          node scripts/src/parallel-build.js --modules "$MODULES" --max-parallel 4 --goal test
+          # Use maven CLI build command for test execution
+          node scripts/src/maven.js build --modules "$MODULES" --max-parallel 4 --goal test --with-tests
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
@@ -319,8 +319,8 @@ jobs:
             VERSION=$(cat "$MODULE/package.json" | jq -r '.version')
             echo "  Version: $VERSION"
 
-            # Run downstream PR script with module and version
-            pnpm -F @libs/scripts downstream:prs --module "$MODULE" --version "${VERSION}-SNAPSHOT"
+            # Run downstream PR command with module and version
+            node scripts/src/maven.js downstream --module "$MODULE" --target-version "${VERSION}-SNAPSHOT" || echo "No dependents configured for $MODULE"
           done
         env:
           # Use PAT with repo scope for cross-repository operations

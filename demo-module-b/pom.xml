@@ -29,6 +29,13 @@
 		<java.version>21</java.version>
 	</properties>
 	<dependencies>
+		<!-- Dependency on demo-module-a -->
+		<dependency>
+			<groupId>com.example</groupId>
+			<artifactId>demo-module-a</artifactId>
+			<version>1.0.0-SNAPSHOT</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webflux</artifactId>

@@ -27,18 +27,19 @@ function isImportantLine(line) {
 }
 
 /**
- * Get changed modules
+ * Get changed modules using the maven CLI
  */
 function getChangedModules(rootDir) {
   try {
-    const changedModulesScript = join(rootDir, 'scripts/src/maven-changed-modules.js');
-    if (!existsSync(changedModulesScript)) {
+    const mavenCli = join(rootDir, 'scripts/src/maven.js');
+    if (!existsSync(mavenCli)) {
       return [];
     }
 
-    const output = execSync(`node ${changedModulesScript}`, { cwd: rootDir, encoding: 'utf8' });
+    const output = execSync(`node ${mavenCli} changed`, { cwd: rootDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
     return output.split('\n').map(m => m.trim()).filter(m => m.length > 0);
   } catch (error) {
+    // If changed command exits with 0 but no output, or exits with error
     return [];
   }
 }

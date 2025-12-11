@@ -8,6 +8,42 @@ import { join } from 'path';
 import { findMavenModules } from '../utils.js';
 
 /**
+ * Base files/directories that should trigger building ALL modules
+ */
+const BASE_PATHS = [
+  'pom.xml',           // Parent POM
+  'scripts/',          // Build scripts
+  '.github/',          // Workflows and CI config
+  'package.json',      // Root package.json
+  'pnpm-lock.yaml',    // Lock file
+  'pnpm-workspace.yaml', // Workspace config
+  '.mvn/',             // Maven wrapper config
+  'mvnw',              // Maven wrapper
+  'mvnw.cmd',          // Maven wrapper (Windows)
+];
+
+/**
+ * Check if a file is a base file that affects all modules
+ */
+function isBaseFile(file) {
+  // Check if file matches any base path
+  for (const basePath of BASE_PATHS) {
+    if (basePath.endsWith('/')) {
+      // Directory prefix match
+      if (file.startsWith(basePath)) {
+        return true;
+      }
+    } else {
+      // Exact file match
+      if (file === basePath) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Get changed files using git diff
  */
 function getChangedFiles(baseBranch) {
@@ -43,6 +79,13 @@ function getChangedFiles(baseBranch) {
       return [];
     }
   }
+}
+
+/**
+ * Check if any base files were changed
+ */
+function hasBaseChanges(changedFiles) {
+  return changedFiles.some(file => isBaseFile(file));
 }
 
 /**
@@ -108,13 +151,27 @@ export function changedCommand(rootDir, options) {
   }));
 
   const changedFiles = getChangedFiles(options.base);
-  const changedModules = mapFilesToModules(changedFiles, modules);
+
+  // Check if base files changed - if so, all modules need to be built
+  const baseFilesChanged = hasBaseChanges(changedFiles);
+  const baseChangedFiles = changedFiles.filter(f => isBaseFile(f));
+
+  let changedModules;
+  if (baseFilesChanged) {
+    // All modules affected when base files change
+    changedModules = modules.map(m => m.name);
+    console.error(`Base files changed (${baseChangedFiles.join(', ')}), all modules will be built.`);
+  } else {
+    changedModules = mapFilesToModules(changedFiles, modules);
+  }
 
   const data = {
     baseBranch: options.base,
     allModules: modules,
     changedFiles: changedFiles,
-    changedModules: changedModules
+    changedModules: changedModules,
+    baseFilesChanged: baseFilesChanged,
+    baseChangedFiles: baseChangedFiles
   };
 
   if (options.output) {

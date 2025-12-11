@@ -1,0 +1,103 @@
+# =============================================================================
+# Release Downstream PRs Workflow
+# =============================================================================
+# Creates PRs in downstream repositories when a GitHub Release is published.
+# This ensures dependent repositories are notified of new stable versions.
+#
+# Trigger: GitHub Release published
+# =============================================================================
+
+name: Create Downstream PRs on Release
+
+on:
+  release:
+    types: [published]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  create-downstream-prs:
+    name: Create Downstream PRs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Parse release tag
+        id: parse
+        run: |
+          # Release tag format: <module>@<version> or <module>-v<version>
+          # Examples: demo-module-a@1.1.0, demo-module-a-v1.1.0
+          TAG="${{ github.event.release.tag_name }}"
+          echo "Release tag: $TAG"
+          
+          # Try to parse module@version format
+          if [[ "$TAG" =~ ^(.+)@(.+)$ ]]; then
+            MODULE="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          # Try to parse module-vX.X.X format
+          elif [[ "$TAG" =~ ^(.+)-v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+            MODULE="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          else
+            echo "Could not parse module and version from tag: $TAG"
+            echo "Expected format: <module>@<version> or <module>-v<version>"
+            exit 1
+          fi
+          
+          echo "Module: $MODULE"
+          echo "Version: $VERSION"
+          
+          # Verify module exists
+          if [ ! -d "$MODULE" ]; then
+            echo "Module directory not found: $MODULE"
+            exit 1
+          fi
+          
+          echo "module=$MODULE" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create downstream PRs
+        run: |
+          MODULE="${{ steps.parse.outputs.module }}"
+          VERSION="${{ steps.parse.outputs.version }}"
+          
+          echo "Creating downstream PRs for $MODULE v$VERSION"
+          
+          # Run downstream PR command (without -SNAPSHOT for release versions)
+          node scripts/src/maven.js downstream \
+            --module "$MODULE" \
+            --target-version "$VERSION" \
+            || echo "No dependents configured for $MODULE"
+        env:
+          # Use PAT with repo scope for cross-repository operations
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Downstream PRs Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Pull requests created for release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Module:** ${{ steps.parse.outputs.module }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.parse.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+

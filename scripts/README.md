@@ -4,7 +4,7 @@ Automation scripts for managing a Maven monorepo with pnpm workspace integration
 
 ## Overview
 
-This directory contains Node.js scripts that bridge Maven and pnpm ecosystems, enabling:
+This directory contains a single consolidated Node.js CLI (`maven.js`) that bridges Maven and pnpm ecosystems, enabling:
 
 - **Selective Versioning**: Independent version management per module
 - **Change Detection**: Git-based module change detection
@@ -12,23 +12,18 @@ This directory contains Node.js scripts that bridge Maven and pnpm ecosystems, e
 - **Version Synchronization**: Bidirectional sync between Maven and package.json
 - **Downstream Automation**: Automatic PR creation in dependent repositories
 
-## Scripts
+## CLI Commands
 
-### Core Scripts
+The `maven.js` CLI provides all functionality through subcommands:
 
-| Script | Purpose | Documentation |
-|--------|---------|---------------|
-| [changed-modules.js](docs/README-changed-modules.md) | Detect which Maven modules changed | [Docs](docs/README-changed-modules.md) |
-| [parallel-build.js](docs/README-parallel-build.md) | Build multiple modules concurrently | [Docs](docs/README-parallel-build.md) |
-| [downstream-prs.js](docs/README-downstream-prs.md) | Create PRs in dependent repositories | [Docs](docs/README-downstream-prs.md) |
-
-### Synchronization Scripts
-
-| Script | Purpose | Documentation |
-|--------|---------|---------------|
-| [maven-init.js](docs/README-maven-init.md) | Initialize package.json for Maven modules | [Docs](docs/README-maven-init.md) |
-| [maven-sync.js](docs/README-maven-sync.md) | Sync versions between Maven and pnpm | [Docs](docs/README-maven-sync.md) |
-| [maven-status.js](docs/README-maven-status.md) | Check version synchronization status | [Docs](docs/README-maven-status.md) |
+| Command | Purpose |
+|---------|---------|
+| `maven.js init` | Generate package.json from pom.xml for modules missing package.json |
+| `maven.js status` | Display version comparison between package.json and pom.xml |
+| `maven.js sync` | Sync pom.xml versions to match package.json versions |
+| `maven.js changed` | Detect changed Maven modules based on git diff |
+| `maven.js build` | Parallel Maven build with colored output |
+| `maven.js downstream` | Create pull requests in downstream repositories |
 
 ## Quick Start
 
@@ -39,27 +34,36 @@ This directory contains Node.js scripts that bridge Maven and pnpm ecosystems, e
 pnpm install
 ```
 
+### View Help
+
+```bash
+node scripts/src/maven.js --help
+node scripts/src/maven.js <command> --help
+```
+
 ### Common Workflows
 
 #### 1. Initial Setup
 
 ```bash
 # Initialize package.json for all modules
-pnpm maven:init
+node scripts/src/maven.js init
 
 # Verify synchronization
-pnpm maven:status
+node scripts/src/maven.js status
 ```
 
 #### 2. Development Workflow
 
 ```bash
 # Detect changed modules
-pnpm changed:modules
+node scripts/src/maven.js changed
+
+# Output as CSV for CI
+node scripts/src/maven.js changed --csv
 
 # Build changed modules in parallel
-CHANGED=$(pnpm changed:modules --csv)
-node scripts/src/parallel-build.js --modules "$CHANGED"
+node scripts/src/maven.js build --modules "demo-module-a,demo-module-b"
 ```
 
 #### 3. Version Bump Workflow
@@ -72,114 +76,134 @@ pnpm changeset
 pnpm changeset version
 
 # Sync Maven versions
-pnpm maven:sync
+node scripts/src/maven.js sync
 
 # Verify
-pnpm maven:status
+node scripts/src/maven.js status
 ```
 
 #### 4. Publishing Workflow
 
 ```bash
 # Build and deploy
-pnpm maven:sync
+node scripts/src/maven.js sync
 mvn clean deploy -pl <module>
 
 # Create downstream PRs
-node scripts/src/downstream-prs.js \
+GITHUB_TOKEN=your_token node scripts/src/maven.js downstream \
   --module <module> \
-  --version <version>-SNAPSHOT
+  --target-version <version>-SNAPSHOT
 ```
 
-## Available pnpm Scripts
+## Command Reference
 
-### Change Detection
+### `init` - Initialize package.json
 
 ```bash
-pnpm changed:modules          # Detect changed modules
-pnpm changed:modules:csv      # Output as CSV
+node scripts/src/maven.js init [options]
+
+Options:
+  --dry-run    Show what would be created without making changes
 ```
 
-### Maven Synchronization
+### `status` - Check Version Status
 
 ```bash
-pnpm maven:init              # Initialize package.json files
-pnpm maven:sync              # Sync Maven ↔ package.json versions
-pnpm maven:status            # Check synchronization status
+node scripts/src/maven.js status [options]
+
+Options:
+  --json       Output as JSON
 ```
 
-### Building
+### `sync` - Sync Versions
 
 ```bash
-pnpm build:parallel          # Build changed modules in parallel
-pnpm test:parallel           # Test changed modules in parallel
+node scripts/src/maven.js sync [options]
+
+Options:
+  --dry-run    Show what would be changed without making changes
 ```
 
-### Downstream Automation
+### `changed` - Detect Changed Modules
 
 ```bash
-pnpm downstream:prs          # Create downstream PRs (requires env vars)
+node scripts/src/maven.js changed [options]
+
+Options:
+  --base <ref>     Base ref for comparison (default: origin/main)
+  --head <ref>     Head ref for comparison (default: HEAD)
+  --csv            Output as comma-separated values
+  --json           Output as JSON array
 ```
 
-## Script Dependencies
+### `build` - Parallel Build
 
-```mermaid
-graph TD
-    A[changed-modules.js] --> B[parallel-build.js]
-    A --> C[downstream-prs.js]
-    D[maven-init.js] --> E[maven-sync.js]
-    E --> F[maven-status.js]
-    E --> C
-    B --> E
+```bash
+node scripts/src/maven.js build [options]
+
+Options:
+  --modules <list>      Comma-separated list of modules to build
+  --max-parallel <n>    Maximum parallel builds (default: 4)
+  --goal <goal>         Maven goal (default: install)
+  --with-tests          Include tests in build
 ```
 
-## Workflow Integration
+### `downstream` - Create Downstream PRs
 
-### CI/CD Pipeline
+```bash
+node scripts/src/maven.js downstream [options]
+
+Options:
+  --module <name>          Module name (required)
+  --target-version <ver>   Target version (required)
+  --dry-run                Show what would be done without making changes
+
+Environment:
+  GITHUB_TOKEN    Required for creating PRs in downstream repositories
+```
+
+## CI/CD Integration
+
+### GitHub Actions Workflow
 
 ```yaml
 # .github/workflows/version-and-publish.yml
 jobs:
   detect-changes:
-    - run: node scripts/src/changed-modules.js --csv
+    steps:
+      - run: |
+          CHANGED=$(node scripts/src/maven.js changed --csv)
+          echo "modules=$CHANGED" >> $GITHUB_OUTPUT
 
   build-and-test:
-    - run: node scripts/src/parallel-build.js --modules "$MODULES"
+    steps:
+      - run: mvn -pl "$MODULES" -am clean install -DskipTests
+      - run: mvn -pl "$MODULES" test
 
   version-modules:
-    - run: pnpm changeset version
-    - run: pnpm maven:sync
-
-  publish-modules:
-    - run: mvn deploy -pl <module>
+    steps:
+      - run: pnpm changeset version
+      - run: node scripts/src/maven.js sync
 
   create-downstream-prs:
-    - run: node scripts/src/downstream-prs.js --module <module> --version <version>
-```
-
-### Local Development
-
-```bash
-# Pre-commit hook
-pnpm maven:status
-pnpm maven:sync
-
-# Before PR
-pnpm changed:modules
-pnpm build:parallel
-pnpm test:parallel
+    steps:
+      - run: |
+          node scripts/src/maven.js downstream \
+            --module "$MODULE" \
+            --target-version "${VERSION}-SNAPSHOT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 ```
 
 ## Environment Variables
 
-| Variable | Required | Used By | Description |
-|----------|----------|---------|-------------|
-| `GITHUB_TOKEN` | Yes* | downstream-prs.js | GitHub PAT for cross-repo PRs |
-| `CI` | Auto | changed-modules.js | Enables CI-specific behavior |
-| `GITHUB_EVENT_NAME` | Auto | changed-modules.js | GitHub event type detection |
-| `MAVEN_OPTS` | No | parallel-build.js | JVM options for Maven |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_TOKEN` | Yes* | GitHub PAT for cross-repo PRs |
+| `CI` | Auto | Enables CI-specific behavior |
+| `GITHUB_EVENT_NAME` | Auto | GitHub event type detection |
 
-\* Required for downstream PR creation
+\* Required for `downstream` command
 
 ## Configuration Files
 
@@ -188,29 +212,34 @@ pnpm test:parallel
 Each module should have:
 
 - **pom.xml** - Maven project descriptor
-- **package.json** - npm package descriptor (created by maven-init.js)
+- **package.json** - npm package descriptor (created by `init` command)
 - **DEPENDENTS.yaml** - Downstream repository configuration (optional)
 
-### Repository Configuration
+### DEPENDENTS.yaml Example
 
-- **pnpm-workspace.yaml** - pnpm workspace configuration
-- **package.json** - Root package.json with workspace definitions
-- **.github/workflows/** - CI/CD workflows
+```yaml
+dependents:
+  - repo: owner/repo-name
+    files:
+      - path: pom.xml
+        search: '<my-module.version>[^<]+</my-module.version>'
+        replace: '<my-module.version>{{version}}</my-module.version>'
+```
 
 ## Architecture
 
 ### Maven ↔ pnpm Bridge
 
 ```
-Maven Ecosystem          Bridge Scripts         pnpm Ecosystem
-─────────────────        ──────────────         ──────────────
-pom.xml                  maven-sync.js          package.json
+Maven Ecosystem          maven.js CLI           pnpm Ecosystem
+─────────────────        ────────────           ──────────────
+pom.xml                  sync command           package.json
   ├─ groupId        ─────────────────────►         ├─ @libs/<name>
   ├─ artifactId     ◄─────────────────────         ├─ version
   ├─ version                                       └─ maven metadata
   └─ packaging
 
-mvn commands             parallel-build.js      pnpm scripts
+mvn commands             build command          pnpm scripts
   ├─ clean          ─────────────────────►         ├─ build
   ├─ package        ◄─────────────────────         ├─ test
   └─ deploy                                        └─ deploy
@@ -219,17 +248,9 @@ mvn commands             parallel-build.js      pnpm scripts
 ### Change Detection Flow
 
 ```
-Git Diff → changed-modules.js → Module List → parallel-build.js → Maven Build
-                                           ↓
-                                    downstream-prs.js → GitHub PRs
-```
-
-### Version Sync Flow
-
-```
-Changeset → package.json bump → maven-sync.js → pom.xml update → Maven Build
-                                                              ↓
-                                                         GitHub Publish
+Git Diff → changed command → Module List → build command → Maven Build
+                                        ↓
+                                 downstream command → GitHub PRs
 ```
 
 ## Troubleshooting
@@ -238,20 +259,18 @@ Changeset → package.json bump → maven-sync.js → pom.xml update → Maven B
 
 **Issue**: Versions out of sync
 
-**Solution**:
 ```bash
-pnpm maven:status
-pnpm maven:sync
+node scripts/src/maven.js status
+node scripts/src/maven.js sync
 ```
 
 ---
 
 **Issue**: No modules detected
 
-**Solution**:
 ```bash
 # Ensure modules have package.json
-pnpm maven:init
+node scripts/src/maven.js init
 
 # Check git status
 git status
@@ -261,69 +280,33 @@ git status
 
 **Issue**: Downstream PR fails with 403
 
-**Solution**:
 - Create PAT with `repo` scope
-- Add to repository secrets as `PAT_TOKEN`
-- See `.github/PAT_SETUP.md`
+- Set `GITHUB_TOKEN` environment variable
+- Or add to repository secrets as `PAT_TOKEN`
 
 ---
 
-**Issue**: Parallel build fails
+**Issue**: Build fails
 
-**Solution**:
 ```bash
-# Build sequentially for debugging
-node scripts/src/parallel-build.js \
-  --modules "demo-module-a" \
-  --max-parallel 1
+# Build single module for debugging
+node scripts/src/maven.js build --modules "demo-module-a" --max-parallel 1
 ```
-
-## Performance Tips
-
-1. **Use parallel builds**: ~2-3x faster than sequential
-2. **Skip tests in CI**: Use `--skip-tests` for faster builds
-3. **Limit concurrency**: Set `--max-parallel` based on available RAM
-4. **Cache Maven dependencies**: Use `actions/setup-java@v4` with caching
 
 ## Development
 
-### Adding New Scripts
-
-1. Create script in `scripts/src/`
-2. Add executable permissions: `chmod +x scripts/src/<script>.js`
-3. Add pnpm script in `scripts/package.json`
-4. Create documentation: `scripts/src/README-<script>.md`
-5. Update this README
-
-### Testing Scripts
+### Testing the CLI
 
 ```bash
-# Run locally
-node scripts/src/<script>.js --help
+# View help
+node scripts/src/maven.js --help
 
-# Via pnpm
-pnpm <script-name>
-
-# In CI (dry-run)
-node scripts/src/<script>.js --dry-run
+# Test each command
+node scripts/src/maven.js status
+node scripts/src/maven.js changed --csv
+node scripts/src/maven.js downstream --module demo-module-a --target-version 1.0.0-SNAPSHOT --dry-run
 ```
 
 ## License
 
 See root LICENSE file.
-
-## Contributing
-
-1. Follow existing script patterns
-2. Add comprehensive documentation
-3. Include error handling
-4. Test in both CI and local environments
-5. Update this README
-
-## Support
-
-For issues or questions:
-1. Check individual script documentation
-2. Review workflow logs in GitHub Actions
-3. Search existing issues
-4. Create new issue with reproduction steps

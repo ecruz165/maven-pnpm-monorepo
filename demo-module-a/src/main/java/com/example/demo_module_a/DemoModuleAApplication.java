@@ -8,7 +8,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * This is a demonstration Spring Boot library module for testing
  * selective versioning and publishing workflows.
  *
- * Updated to validate consolidated Maven CLI workflow.
+ * BREAKING CHANGE: Added new API for module information.
+ * This is a major version bump to test downstream PR generation.
  */
 @SpringBootApplication
 public class DemoModuleAApplication {
@@ -23,7 +24,23 @@ public class DemoModuleAApplication {
 	 * @return the module version string
 	 */
 	public static String getVersion() {
-		return "0.0.1-SNAPSHOT";
+		return "1.0.0-SNAPSHOT";
+	}
+
+	/**
+	 * NEW API: Get module name.
+	 * @return the module name
+	 */
+	public static String getModuleName() {
+		return "demo-module-a";
+	}
+
+	/**
+	 * NEW API: Get module description.
+	 * @return the module description
+	 */
+	public static String getModuleDescription() {
+		return "Demo Module A - Core library for testing selective versioning";
 	}
 
 }

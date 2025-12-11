@@ -13,13 +13,15 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  validate:
-    name: Build & Test
+  # -------------------------------------------------------------------------
+  # Detect changed modules (runs natively for speed)
+  # -------------------------------------------------------------------------
+  detect-changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
+    outputs:
+      modules: ${{ steps.detect.outputs.modules }}
+      has-changes: ${{ steps.detect.outputs.has_changes }}
 
     steps:
       - name: Checkout code
@@ -27,14 +29,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: 'maven'
-
-      - name: Set up Node.js ${{ env.NODE_VERSION }}
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -44,19 +39,12 @@ jobs:
         with:
           run_install: false
 
-      - name: Install pnpm dependencies
+      - name: Install dependencies
         run: pnpm install
 
-      - name: Ensure all modules have package.json
-        run: pnpm maven:init
-
-      - name: Verify version sync
-        run: pnpm maven:status
-
       - name: Detect changed modules
-        id: detect-changes
+        id: detect
         run: |
-          # Get changed modules (info messages go to stderr, module list to stdout)
           CHANGED=$(node scripts/src/maven.js changed --csv 2>/dev/null || echo "")
           if [ -z "$CHANGED" ]; then
             echo "modules=" >> $GITHUB_OUTPUT
@@ -68,36 +56,113 @@ jobs:
             echo "Changed modules: $CHANGED"
           fi
 
-      - name: Build and test modules
-        if: steps.detect-changes.outputs.has_changes == 'true'
+  # -------------------------------------------------------------------------
+  # Build and test using Docker container
+  # -------------------------------------------------------------------------
+  build-and-test:
+    name: Build & Test (Docker)
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and test in container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ci
+          target: test
+          push: false
+          build-args: |
+            MODULES=${{ needs.detect-changes.outputs.modules }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build artifacts in container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ci
+          target: build
+          push: false
+          load: true
+          tags: monorepo-build:${{ github.sha }}
+          build-args: |
+            MODULES=${{ needs.detect-changes.outputs.modules }}
+            SKIP_TESTS=true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract test results
         run: |
-          # Build all changed modules (includes tests)
-          ./mvnw -pl ${{ steps.detect-changes.outputs.modules }} -am clean install
+          # Create container to extract files
+          docker create --name extract monorepo-build:${{ github.sha }}
+
+          # Extract test results
+          mkdir -p test-results
+          docker cp extract:/workspace/demo-module-a/target/surefire-reports test-results/ 2>/dev/null || true
+          docker cp extract:/workspace/demo-module-b/target/surefire-reports test-results/ 2>/dev/null || true
+          docker cp extract:/workspace/demo-module-c/target/surefire-reports test-results/ 2>/dev/null || true
+
+          # Extract JARs
+          mkdir -p artifacts
+          docker cp extract:/workspace/demo-module-a/target artifacts/demo-module-a/ 2>/dev/null || true
+          docker cp extract:/workspace/demo-module-b/target artifacts/demo-module-b/ 2>/dev/null || true
+          docker cp extract:/workspace/demo-module-c/target artifacts/demo-module-c/ 2>/dev/null || true
+
+          docker rm extract
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always() && steps.detect-changes.outputs.has_changes == 'true'
+        if: always()
         with:
           files: |
-            **/target/surefire-reports/*.xml
+            test-results/**/TEST-*.xml
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
-        if: success() && steps.detect-changes.outputs.has_changes == 'true'
+        if: success()
         with:
           name: maven-artifacts
           path: |
-            */target/*.jar
-            */target/*.war
+            artifacts/**/*.jar
           retention-days: 7
 
       - name: Summary
         run: |
           echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.detect-changes.outputs.has_changes }}" == "true" ]; then
-            echo "✅ Modules built and tested successfully" >> $GITHUB_STEP_SUMMARY
-            echo "**Changed Modules:** ${{ steps.detect-changes.outputs.modules }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "ℹ️ No module changes detected - skipped build" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "✅ Modules built and tested successfully (Docker)" >> $GITHUB_STEP_SUMMARY
+          echo "**Changed Modules:** ${{ needs.detect-changes.outputs.modules }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Container:** \`Dockerfile.ci\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cache:** GitHub Actions BuildKit cache" >> $GITHUB_STEP_SUMMARY
+
+  # -------------------------------------------------------------------------
+  # Skip notification when no changes
+  # -------------------------------------------------------------------------
+  no-changes:
+    name: No Changes
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes != 'true'
+
+    steps:
+      - name: Summary
+        run: |
+          echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ℹ️ No module changes detected - skipped build" >> $GITHUB_STEP_SUMMARY

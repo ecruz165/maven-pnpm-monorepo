@@ -1,0 +1,128 @@
+# =============================================================================
+# CI Build Dockerfile
+# =============================================================================
+# Multi-stage Dockerfile for building the Maven/pnpm monorepo.
+# Uses BuildKit cache mounts for fast incremental builds.
+#
+# Usage:
+#   docker build -f Dockerfile.ci -t monorepo-build .
+#   docker build -f Dockerfile.ci --target test -t monorepo-test .
+#
+# With BuildKit cache (recommended):
+#   DOCKER_BUILDKIT=1 docker build -f Dockerfile.ci \
+#     --build-arg MODULES=demo-module-a,demo-module-b \
+#     -t monorepo-build .
+# =============================================================================
+
+# syntax=docker/dockerfile:1.4
+
+# -----------------------------------------------------------------------------
+# Base stage: Java + Node.js + pnpm (Amazon Linux 2023 for glibc 2.34+)
+# -----------------------------------------------------------------------------
+FROM amazoncorretto:21-al2023 AS base
+
+# Install Node.js 20 and git
+RUN dnf install -y tar gzip git && \
+    dnf install -y nodejs20 nodejs20-npm --allowerasing && \
+    ln -sf /usr/bin/node-20 /usr/bin/node && \
+    ln -sf /usr/bin/npm-20 /usr/bin/npm && \
+    ln -sf /usr/bin/npx-20 /usr/bin/npx && \
+    npm install -g pnpm@9 && \
+    dnf clean all
+
+WORKDIR /workspace
+
+# -----------------------------------------------------------------------------
+# Dependencies stage: Download Maven and npm dependencies
+# -----------------------------------------------------------------------------
+FROM base AS deps
+
+# Copy dependency definition files first (for layer caching)
+COPY pom.xml mvnw ./
+COPY .mvn .mvn
+COPY demo-module-a/pom.xml demo-module-a/
+COPY demo-module-b/pom.xml demo-module-b/
+COPY demo-module-c/pom.xml demo-module-c/
+
+# Copy pnpm workspace files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY scripts/package.json scripts/
+
+# Download Maven dependencies with cache mount
+RUN --mount=type=cache,target=/root/.m2/repository \
+    chmod +x mvnw && \
+    ./mvnw dependency:go-offline -B -q
+
+# Install pnpm dependencies with cache mount
+RUN --mount=type=cache,target=/root/.pnpm-store \
+    pnpm config set store-dir /root/.pnpm-store && \
+    pnpm install --frozen-lockfile
+
+# -----------------------------------------------------------------------------
+# Build stage: Compile and test
+# -----------------------------------------------------------------------------
+FROM deps AS build
+
+# Build arguments
+ARG MODULES=""
+ARG SKIP_TESTS=false
+ARG MAVEN_GOAL=install
+
+# Copy source code
+COPY . .
+
+# Build with cache mount for Maven repository
+RUN --mount=type=cache,target=/root/.m2/repository \
+    if [ -n "$MODULES" ]; then \
+      echo "Building modules: $MODULES" && \
+      ./mvnw -pl $MODULES -am clean $MAVEN_GOAL \
+        -DskipTests=$SKIP_TESTS \
+        -B -q; \
+    else \
+      echo "Building all modules" && \
+      ./mvnw clean $MAVEN_GOAL \
+        -DskipTests=$SKIP_TESTS \
+        -B -q; \
+    fi
+
+# -----------------------------------------------------------------------------
+# Test stage: Run tests only
+# -----------------------------------------------------------------------------
+FROM deps AS test
+
+# Copy source code
+COPY . .
+
+# Build arguments
+ARG MODULES=""
+
+# Run tests with cache mount
+RUN --mount=type=cache,target=/root/.m2/repository \
+    if [ -n "$MODULES" ]; then \
+      echo "Testing modules: $MODULES" && \
+      ./mvnw -pl $MODULES -am clean test -B; \
+    else \
+      echo "Testing all modules" && \
+      ./mvnw clean test -B; \
+    fi
+
+# -----------------------------------------------------------------------------
+# Artifacts stage: Extract build artifacts
+# -----------------------------------------------------------------------------
+FROM build AS artifacts
+
+# Create artifacts directory
+RUN mkdir -p /artifacts && \
+    find . -path "*/target/*.jar" -exec cp {} /artifacts/ \; 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# Final stage: Minimal image with just artifacts
+# -----------------------------------------------------------------------------
+FROM amazoncorretto:21-al2023-headless AS runtime
+
+WORKDIR /app
+COPY --from=artifacts /artifacts/*.jar ./
+
+# Default command (override as needed)
+CMD ["ls", "-la"]
+

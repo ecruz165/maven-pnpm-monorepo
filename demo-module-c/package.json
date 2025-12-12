@@ -1,6 +1,6 @@
 {
   "name": "@libs/demo-module-c",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "private": true,
   "description": "Module C",
   "maven": {

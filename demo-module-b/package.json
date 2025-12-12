@@ -1,6 +1,6 @@
 {
   "name": "@libs/demo-module-b",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Module B",
   "maven": {

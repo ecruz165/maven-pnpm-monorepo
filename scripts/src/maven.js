@@ -578,8 +578,10 @@ function buildLevel(levelModules, rootDir, options, isFirstLevel = false) {
         // For other goals (install, package, etc.): use the specified goal
         const effectiveGoal = options.goal === 'test' ? 'install' : options.goal;
 
-        // Build only these modules (no -am since dependencies already built)
-        const mavenArgs = ['-pl', moduleList, 'clean', effectiveGoal];
+        // Build these modules and their dependencies (-am = also-make)
+        // This ensures that if a changed module depends on an unchanged module,
+        // the dependency is built first
+        const mavenArgs = ['-pl', moduleList, '-am', 'clean', effectiveGoal];
 
         // For test goal, we run tests (don't skip them)
         // For other goals, respect the skipTests option
@@ -635,7 +637,7 @@ function buildLevel(levelModules, rootDir, options, isFirstLevel = false) {
     });
 }
 
-// Install parent POM to local repository (required for module builds without -am)
+// Install parent POM to local repository (ensures parent POM is available)
 async function installParentPom(rootDir) {
     return new Promise((resolve) => {
         const mavenCmd = getMavenCommand(rootDir);
@@ -691,7 +693,7 @@ async function buildByLevels(modules, rootDir, options) {
     });
     console.log('='.repeat(50) + '\n');
 
-    // Install parent POM first (required for module builds without -am)
+    // Install parent POM first (ensures parent POM is available)
     const parentInstalled = await installParentPom(rootDir);
     if (!parentInstalled) {
         console.error(`${COLORS.RED}Failed to install parent POM. Aborting build.${COLORS.RESET}`);

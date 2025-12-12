@@ -568,14 +568,27 @@ function buildModule(moduleName, color, rootDir, options) {
 }
 
 // Build a single level of modules (can be parallelized safely)
-function buildLevel(levelModules, rootDir, options) {
+function buildLevel(levelModules, rootDir, options, isFirstLevel = false) {
     return new Promise((resolve) => {
         const startTime = Date.now();
         const mavenCmd = getMavenCommand(rootDir);
         const moduleList = levelModules.join(',');
+
+        // For test goal: always use 'install' to ensure artifacts are available for dependent modules
+        // For other goals (install, package, etc.): use the specified goal
+        const effectiveGoal = options.goal === 'test' ? 'install' : options.goal;
+
         // Build only these modules (no -am since dependencies already built)
-        const mavenArgs = ['-pl', moduleList, 'clean', options.goal];
-        if (options.skipTests) mavenArgs.push('-DskipTests');
+        const mavenArgs = ['-pl', moduleList, 'clean', effectiveGoal];
+
+        // For test goal, we run tests (don't skip them)
+        // For other goals, respect the skipTests option
+        if (options.goal === 'test') {
+            // Don't add -DskipTests - we want to run tests
+        } else if (options.skipTests) {
+            mavenArgs.push('-DskipTests');
+        }
+
         if (options.offline) mavenArgs.push('--offline');
         // Use Maven's parallel build for modules in this level
         if (options.maxParallel > 1 && levelModules.length > 1) {

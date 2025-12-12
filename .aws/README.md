@@ -1,16 +1,29 @@
 # AWS CodeBuild Setup
 
-This directory contains the AWS CodeBuild configuration to replace GitHub Actions with AWS-native CI/CD.
+This directory contains the AWS CodeBuild configuration that mirrors `.github/workflows/ci.yml`.
 
 ## Overview
 
-The `buildspec.yml` replicates the complete GitHub Actions workflow functionality:
+The `buildspec.yml` uses the same maven.js CLI commands as the GitHub Actions workflow:
+
+| Command | Description |
+|---------|-------------|
+| `maven.js init` | Generate package.json from pom.xml |
+| `maven.js status` | Check version alignment |
+| `maven.js sync` | Sync versions between package.json and pom.xml |
+| `maven.js changed` | Detect changed modules via git diff |
+| `maven.js deps` | Show dependency tree |
+| `maven.js build` | Build with dependency-aware parallel execution |
+| `maven.js downstream` | Create PRs in downstream repos |
+
+### Features
 
 - **Change Detection** - Detects which modules changed using git diff
-- **Parallel Building** - Builds changed modules with dependencies in parallel
+- **Dependency-Aware Builds** - Builds modules in correct order based on dependencies
+- **Parallel Building** - Builds independent modules in parallel within each level
 - **Testing** - Runs tests for changed modules
 - **Versioning** - Applies changeset versions and syncs to Maven POMs
-- **Publishing** - Deploys artifacts to Maven repository (CodeArtifact or GitHub Packages)
+- **Publishing** - Deploys artifacts to GitHub Packages
 - **Downstream PRs** - Creates pull requests in dependent repositories
 
 ## Prerequisites
@@ -141,54 +154,17 @@ The buildspec automatically authenticates using the `GITHUB_TOKEN` from Paramete
 
 ## Build Configuration
 
-### Build Modes
-
-The buildspec supports two build modes:
-
-#### 1. Docker Build Mode (Recommended)
-
-Uses `Dockerfile.ci` for consistent builds across GitHub Actions and AWS CodeBuild:
-
-```yaml
-env:
-  variables:
-    DOCKER_BUILD: "true"  # Default
-```
-
-**Benefits:**
-- Identical build environment as GitHub Actions
-- Uses `maven.js` CLI for parallel builds with colored output
-- BuildKit cache mounts for fast incremental builds
-- Consistent Java 21 + Node.js 20 + pnpm 9 environment
-
-**Requirements:**
-- CodeBuild environment must have **Privileged mode enabled** for Docker builds
-- Use image: `aws/codebuild/amazonlinux2-x86_64-standard:5.0` or later
-
-#### 2. Native Build Mode (Legacy)
-
-Builds directly on CodeBuild host without Docker:
-
-```yaml
-env:
-  variables:
-    DOCKER_BUILD: "false"
-```
-
-**Use when:**
-- Docker is not available or privileged mode cannot be enabled
-- Debugging build issues
-- Custom CodeBuild images already have all dependencies
-
 ### Environment Variables
 
 Set in CodeBuild project environment:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `DOCKER_BUILD` | Use Docker container for builds | `true` | No |
 | `SKIP_TESTS` | Skip test execution | `false` | No |
-| `MAX_PARALLEL_BUILDS` | Max concurrent Maven builds | `4` | No |
+| `MAX_PARALLEL_BUILDS` | Max concurrent Maven builds | `2` | No |
+| `JAVA_VERSION` | Java version | `21` | No |
+| `NODE_VERSION` | Node.js version | `20` | No |
+| `PNPM_VERSION` | pnpm version | `9` | No |
 | `GITHUB_TOKEN` | GitHub PAT (from Parameter Store) | - | Yes |
 
 ### Compute Resources

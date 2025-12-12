@@ -96,6 +96,154 @@ function normalizeVersion(version) {
 }
 
 // ============================================================================
+// DEPENDENCY ANALYSIS
+// ============================================================================
+
+// Get dependencies from a module's pom.xml that are internal (within the monorepo)
+function getModuleDependencies(modulePath, allModules, rootDir) {
+    const pomPath = join(modulePath, 'pom.xml');
+    if (!existsSync(pomPath)) return [];
+
+    try {
+        const pomXml = readFileSync(pomPath, 'utf8');
+        const parser = new XMLParser({ignoreAttributes: false, parseTagValue: true});
+        const pom = parser.parse(pomXml);
+        const project = pom?.project;
+        if (!project) return [];
+
+        // Get parent groupId for reference
+        const parentGroupId = project.parent?.groupId || project.groupId || 'com.example';
+
+        // Get all dependencies
+        let deps = project.dependencies?.dependency || [];
+        if (!Array.isArray(deps)) deps = [deps];
+
+        // Build a map of artifactId -> moduleName for all modules
+        const moduleMap = {};
+        for (const mod of allModules) {
+            const modMeta = readPomMetadata(join(rootDir, mod));
+            if (modMeta) {
+                moduleMap[modMeta.artifactId] = mod;
+            }
+        }
+
+        // Filter to only internal dependencies (same groupId and in our modules)
+        const internalDeps = [];
+        for (const dep of deps) {
+            if (dep.groupId === parentGroupId && moduleMap[dep.artifactId]) {
+                internalDeps.push(moduleMap[dep.artifactId]);
+            }
+        }
+
+        return internalDeps;
+    } catch (error) {
+        console.error(`Error reading dependencies from ${modulePath}/pom.xml:`, error.message);
+        return [];
+    }
+}
+
+// Build dependency graph for all modules
+function buildDependencyGraph(rootDir) {
+    const modules = findMavenModules(rootDir);
+    const graph = {};
+
+    for (const mod of modules) {
+        const deps = getModuleDependencies(join(rootDir, mod), modules, rootDir);
+        graph[mod] = deps;
+    }
+
+    return graph;
+}
+
+// Topological sort to get build order (dependencies first)
+function getBuildOrder(modules, dependencyGraph) {
+    const visited = new Set();
+    const result = [];
+
+    function visit(mod) {
+        if (visited.has(mod)) return;
+        visited.add(mod);
+
+        // Visit dependencies first
+        const deps = dependencyGraph[mod] || [];
+        for (const dep of deps) {
+            if (modules.includes(dep)) {
+                visit(dep);
+            }
+        }
+
+        result.push(mod);
+    }
+
+    for (const mod of modules) {
+        visit(mod);
+    }
+
+    return result;
+}
+
+// Group modules into build levels (modules in same level can be built in parallel)
+function getBuildLevels(modules, dependencyGraph) {
+    const levels = [];
+    const built = new Set();
+    let remaining = [...modules];
+
+    while (remaining.length > 0) {
+        // Find modules whose dependencies are all built
+        const canBuild = remaining.filter(mod => {
+            const deps = dependencyGraph[mod] || [];
+            return deps.every(dep => !modules.includes(dep) || built.has(dep));
+        });
+
+        if (canBuild.length === 0 && remaining.length > 0) {
+            // Circular dependency detected, just add remaining
+            console.warn(`${COLORS.YELLOW}Warning: Possible circular dependency detected${COLORS.RESET}`);
+            levels.push(remaining);
+            break;
+        }
+
+        levels.push(canBuild);
+        canBuild.forEach(mod => built.add(mod));
+        remaining = remaining.filter(mod => !built.has(mod));
+    }
+
+    return levels;
+}
+
+// Print dependency tree
+function printDependencyTree(rootDir, options = {}) {
+    const modules = findMavenModules(rootDir);
+    const graph = buildDependencyGraph(rootDir);
+
+    console.log(`\n${COLORS.BOLD}Module Dependency Tree${COLORS.RESET}`);
+    console.log('='.repeat(50) + '\n');
+
+    for (const mod of modules) {
+        const deps = graph[mod] || [];
+        if (deps.length > 0) {
+            console.log(`${COLORS.BLUE}${mod}${COLORS.RESET}`);
+            deps.forEach((dep, i) => {
+                const isLast = i === deps.length - 1;
+                console.log(`  ${isLast ? '└──' : '├──'} ${dep}`);
+            });
+        } else {
+            console.log(`${COLORS.GREEN}${mod}${COLORS.RESET} (no internal dependencies)`);
+        }
+    }
+
+    // Show build levels
+    const levels = getBuildLevels(modules, graph);
+    console.log(`\n${COLORS.BOLD}Build Levels (parallel-safe)${COLORS.RESET}`);
+    console.log('='.repeat(50) + '\n');
+
+    levels.forEach((level, i) => {
+        console.log(`Level ${i + 1}: ${level.join(', ')}`);
+    });
+
+    console.log('');
+}
+
+// ============================================================================
 // INIT COMMAND
 // ============================================================================
 
@@ -419,21 +567,23 @@ function buildModule(moduleName, color, rootDir, options) {
     });
 }
 
-// Build all modules using Maven reactor (single invocation, handles dependencies correctly)
-function buildWithReactor(modules, rootDir, options) {
+// Build a single level of modules (can be parallelized safely)
+function buildLevel(levelModules, rootDir, options) {
     return new Promise((resolve) => {
         const startTime = Date.now();
         const mavenCmd = getMavenCommand(rootDir);
-        const moduleList = modules.join(',');
-        // Use -pl with -am to build modules and their dependencies in correct order
-        const mavenArgs = ['-pl', moduleList, '-am', 'clean', options.goal];
+        const moduleList = levelModules.join(',');
+        // Build only these modules (no -am since dependencies already built)
+        const mavenArgs = ['-pl', moduleList, 'clean', options.goal];
         if (options.skipTests) mavenArgs.push('-DskipTests');
         if (options.offline) mavenArgs.push('--offline');
-        // Use Maven's parallel build feature
-        if (options.maxParallel > 1) mavenArgs.push(`-T${options.maxParallel}`);
+        // Use Maven's parallel build for modules in this level
+        if (options.maxParallel > 1 && levelModules.length > 1) {
+            mavenArgs.push(`-T${Math.min(options.maxParallel, levelModules.length)}`);
+        }
 
-        console.log(`${COLORS.BOLD}Running Maven reactor build...${COLORS.RESET}`);
-        console.log(`Command: ${mavenCmd} ${mavenArgs.join(' ')}\n`);
+        console.log(`${COLORS.CYAN}[level]${COLORS.RESET} Building: ${levelModules.join(', ')}`);
+        console.log(`${COLORS.CYAN}[level]${COLORS.RESET} Command: ${mavenCmd} ${mavenArgs.join(' ')}\n`);
 
         const mvn = spawn(mavenCmd, mavenArgs, {cwd: rootDir, shell: true});
         let output = '';
@@ -442,32 +592,70 @@ function buildWithReactor(modules, rootDir, options) {
             output += data.toString();
             for (const line of data.toString().split('\n')) {
                 if (line.trim() && isImportantLine(line)) {
-                    console.log(`${COLORS.BLUE}[reactor]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
+                    console.log(`${COLORS.BLUE}[build]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
                 }
             }
         });
         mvn.stderr.on('data', (data) => {
             for (const line of data.toString().split('\n')) {
-                if (line.trim()) console.error(`${COLORS.RED}[reactor]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
+                if (line.trim()) console.error(`${COLORS.RED}[build]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
             }
         });
         mvn.on('close', (code) => {
             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-            // Parse output to get per-module results
-            const results = modules.map(mod => {
+            const results = levelModules.map(mod => {
                 const successPattern = new RegExp(`${mod}[^\\n]*SUCCESS`, 'i');
                 const failPattern = new RegExp(`${mod}[^\\n]*FAILURE`, 'i');
-                const success = successPattern.test(output) && !failPattern.test(output);
-                return {module: mod, success: code === 0 || success, duration: parseFloat(duration) / modules.length, exitCode: code};
+                const success = code === 0 || (successPattern.test(output) && !failPattern.test(output));
+                return {module: mod, success, duration: parseFloat(duration) / levelModules.length, exitCode: code};
             });
-            resolve(results);
+            resolve({results, success: code === 0});
         });
         mvn.on('error', (error) => {
             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
             console.error(`${COLORS.RED}ERROR: ${error.message}${COLORS.RESET}`);
-            resolve(modules.map(mod => ({module: mod, success: false, duration: parseFloat(duration), exitCode: 1, error: error.message})));
+            resolve({
+                results: levelModules.map(mod => ({module: mod, success: false, duration: parseFloat(duration), exitCode: 1, error: error.message})),
+                success: false
+            });
         });
     });
+}
+
+// Build modules level by level (dependencies first, then dependents)
+async function buildByLevels(modules, rootDir, options) {
+    const graph = buildDependencyGraph(rootDir);
+    const levels = getBuildLevels(modules, graph);
+
+    console.log(`${COLORS.BOLD}Dependency Analysis${COLORS.RESET}`);
+    console.log('='.repeat(50));
+    levels.forEach((level, i) => {
+        console.log(`Level ${i + 1}: ${level.join(', ')}`);
+    });
+    console.log('='.repeat(50) + '\n');
+
+    const allResults = [];
+
+    for (let i = 0; i < levels.length; i++) {
+        const level = levels[i];
+        console.log(`\n${COLORS.BOLD}Building Level ${i + 1}/${levels.length}${COLORS.RESET}\n`);
+
+        const {results, success} = await buildLevel(level, rootDir, options);
+        allResults.push(...results);
+
+        if (!success) {
+            console.error(`\n${COLORS.RED}Level ${i + 1} failed. Stopping build.${COLORS.RESET}\n`);
+            // Mark remaining modules as not built
+            for (let j = i + 1; j < levels.length; j++) {
+                for (const mod of levels[j]) {
+                    allResults.push({module: mod, success: false, duration: 0, exitCode: -1, error: 'Skipped due to dependency failure'});
+                }
+            }
+            break;
+        }
+    }
+
+    return allResults;
 }
 
 async function buildModulesInParallel(modules, rootDir, options) {
@@ -544,8 +732,8 @@ async function buildCommand(rootDir, options) {
     }
     console.log(`Modules: ${modulesToBuild.join(', ')}\nMax Parallel: ${options.maxParallel}\nSkip Tests: ${options.skipTests}\nGoal: ${options.goal}\n`);
     const startTime = Date.now();
-    // Use Maven reactor build to handle dependencies correctly and avoid race conditions
-    const results = await buildWithReactor(modulesToBuild, rootDir, options);
+    // Build by dependency levels to avoid race conditions
+    const results = await buildByLevels(modulesToBuild, rootDir, options);
     console.log(`\n${COLORS.BOLD}All builds completed in ${((Date.now() - startTime) / 1000).toFixed(2)}s${COLORS.RESET}`);
     process.exit(printBuildSummary(results));
 }
@@ -800,9 +988,21 @@ program
     });
 
 program
+    .command('deps')
+    .description('Show module dependency tree and build order')
+    .action(() => {
+        try {
+            printDependencyTree(rootDir);
+        } catch (e) {
+            console.error('Error:', e.message || e);
+            process.exit(1);
+        }
+    });
+
+program
     .command('build')
-    .description('Parallel Maven build with colored output')
-    .option('-p, --max-parallel <number>', 'Maximum parallel builds', '4')
+    .description('Parallel Maven build with colored output (respects dependency order)')
+    .option('-p, --max-parallel <number>', 'Maximum parallel builds per level', '4')
     .option('-a, --all', 'Build all modules', false)
     .option('-m, --modules <modules>', 'Comma-separated list of modules to build')
     .option('--with-tests', 'Run tests during build', false)

@@ -87,44 +87,37 @@ jobs:
           file: ./Dockerfile.ci
           target: test
           push: false
-          build-args: |
-            MODULES=${{ needs.detect-changes.outputs.modules }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build artifacts in container
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.ci
-          target: build
-          push: false
           load: true
-          tags: monorepo-build:${{ github.sha }}
+          tags: monorepo-test:${{ github.sha }}
           build-args: |
             MODULES=${{ needs.detect-changes.outputs.modules }}
-            SKIP_TESTS=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Extract test results
         run: |
-          # Create container to extract files
-          docker create --name extract monorepo-build:${{ github.sha }}
+          # Create container to extract test results
+          docker create --name test-extract monorepo-test:${{ github.sha }}
 
-          # Extract test results
+          # Extract test results from test container
           mkdir -p test-results
-          docker cp extract:/workspace/demo-module-a/target/surefire-reports test-results/ 2>/dev/null || true
-          docker cp extract:/workspace/demo-module-b/target/surefire-reports test-results/ 2>/dev/null || true
-          docker cp extract:/workspace/demo-module-c/target/surefire-reports test-results/ 2>/dev/null || true
+          docker cp test-extract:/workspace/demo-module-a/target/surefire-reports test-results/demo-module-a/ 2>/dev/null || true
+          docker cp test-extract:/workspace/demo-module-b/target/surefire-reports test-results/demo-module-b/ 2>/dev/null || true
+          docker cp test-extract:/workspace/demo-module-c/target/surefire-reports test-results/demo-module-c/ 2>/dev/null || true
 
-          # Extract JARs
+          # Extract JARs from test container (tests ran with install goal, so JARs are available)
           mkdir -p artifacts
-          docker cp extract:/workspace/demo-module-a/target artifacts/demo-module-a/ 2>/dev/null || true
-          docker cp extract:/workspace/demo-module-b/target artifacts/demo-module-b/ 2>/dev/null || true
-          docker cp extract:/workspace/demo-module-c/target artifacts/demo-module-c/ 2>/dev/null || true
+          docker cp test-extract:/workspace/demo-module-a/target artifacts/demo-module-a/ 2>/dev/null || true
+          docker cp test-extract:/workspace/demo-module-b/target artifacts/demo-module-b/ 2>/dev/null || true
+          docker cp test-extract:/workspace/demo-module-c/target artifacts/demo-module-c/ 2>/dev/null || true
 
-          docker rm extract
+          docker rm test-extract
+
+          # List extracted files for debugging
+          echo "=== Test Results ==="
+          find test-results -name "*.xml" 2>/dev/null || echo "No test XML files found"
+          echo "=== Artifacts ==="
+          find artifacts -name "*.jar" 2>/dev/null || echo "No JAR files found"
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

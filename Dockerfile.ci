@@ -1,17 +1,26 @@
 # =============================================================================
-# CI Build Dockerfile
+# CI Build Dockerfile - Uses maven.js CLI
 # =============================================================================
 # Multi-stage Dockerfile for building the Maven/pnpm monorepo.
-# Uses BuildKit cache mounts for fast incremental builds.
+# All Maven operations use the maven.js CLI for consistency.
+#
+# maven.js commands used:
+#   - init:    Generate package.json from pom.xml
+#   - status:  Display version alignment
+#   - sync:    Sync versions between package.json and pom.xml
+#   - changed: Detect changed modules via git diff
+#   - build:   Parallel Maven build with colored output
 #
 # Usage:
-#   docker build -f Dockerfile.ci -t monorepo-build .
-#   docker build -f Dockerfile.ci --target test -t monorepo-test .
+#   # Build all modules
+#   DOCKER_BUILDKIT=1 docker build -f Dockerfile.ci -t monorepo-build .
 #
-# With BuildKit cache (recommended):
+#   # Build specific modules
 #   DOCKER_BUILDKIT=1 docker build -f Dockerfile.ci \
-#     --build-arg MODULES=demo-module-a,demo-module-b \
-#     -t monorepo-build .
+#     --build-arg MODULES=demo-module-a,demo-module-b -t monorepo-build .
+#
+#   # Check version status only
+#   DOCKER_BUILDKIT=1 docker build -f Dockerfile.ci --target status .
 # =============================================================================
 
 # syntax=docker/dockerfile:1.4
@@ -21,7 +30,6 @@
 # -----------------------------------------------------------------------------
 FROM amazoncorretto:21-al2023 AS base
 
-# Install Node.js 20 and git
 RUN dnf install -y tar gzip git && \
     dnf install -y nodejs20 nodejs20-npm --allowerasing && \
     ln -sf /usr/bin/node-20 /usr/bin/node && \
@@ -43,8 +51,6 @@ COPY .mvn .mvn
 COPY demo-module-a/pom.xml demo-module-a/
 COPY demo-module-b/pom.xml demo-module-b/
 COPY demo-module-c/pom.xml demo-module-c/
-
-# Copy pnpm workspace files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts/package.json scripts/
 
@@ -59,78 +65,128 @@ RUN --mount=type=cache,target=/root/.pnpm-store \
     pnpm install --frozen-lockfile
 
 # -----------------------------------------------------------------------------
-# Build stage: Compile and test using maven.js CLI
+# Init stage: Generate package.json for modules (maven.js init)
 # -----------------------------------------------------------------------------
-FROM deps AS build
+FROM deps AS init
 
-# Build arguments
+COPY . .
+
+# Generate package.json files for any modules missing them
+RUN echo "=== maven.js init ===" && \
+    node scripts/src/maven.js init && \
+    echo "✓ Init completed"
+
+# -----------------------------------------------------------------------------
+# Status stage: Check version alignment (maven.js status)
+# -----------------------------------------------------------------------------
+FROM init AS status
+
+# Display version comparison between package.json and pom.xml
+RUN echo "=== maven.js status ===" && \
+    node scripts/src/maven.js status && \
+    echo "✓ Status check completed"
+
+# -----------------------------------------------------------------------------
+# Sync stage: Sync versions (maven.js sync)
+# -----------------------------------------------------------------------------
+FROM status AS sync
+
+ARG SYNC_VERSIONS=false
+
+# Optionally sync versions (package.json -> pom.xml)
+RUN if [ "$SYNC_VERSIONS" = "true" ]; then \
+      echo "=== maven.js sync ===" && \
+      node scripts/src/maven.js sync && \
+      echo "✓ Sync completed"; \
+    else \
+      echo "=== Skipping sync (SYNC_VERSIONS=false) ==="; \
+    fi
+
+# -----------------------------------------------------------------------------
+# Changed stage: Detect changed modules (maven.js changed)
+# -----------------------------------------------------------------------------
+FROM sync AS changed
+
+ARG BASE_BRANCH=main
+
+# Detect changed modules (requires git history)
+RUN echo "=== maven.js changed ===" && \
+    (node scripts/src/maven.js changed --base $BASE_BRANCH --csv 2>/dev/null || echo "all") | tee /tmp/changed.txt && \
+    echo "✓ Changed detection completed"
+
+# -----------------------------------------------------------------------------
+# Build stage: Compile using maven.js build
+# -----------------------------------------------------------------------------
+FROM sync AS build
+
 ARG MODULES=""
 ARG SKIP_TESTS=true
 ARG MAVEN_GOAL=install
+ARG MAX_PARALLEL=4
 
-# Copy source code
-COPY . .
-
-# Build with cache mount for Maven repository using maven.js CLI
+# Build with cache mount using maven.js build
 RUN --mount=type=cache,target=/root/.m2/repository \
+    echo "=== maven.js build ===" && \
     if [ -n "$MODULES" ]; then \
       echo "Building modules: $MODULES" && \
       node scripts/src/maven.js build \
         --modules "$MODULES" \
+        --max-parallel $MAX_PARALLEL \
         --goal $MAVEN_GOAL \
         $([ "$SKIP_TESTS" = "true" ] && echo "--skip-tests" || echo "--with-tests"); \
     else \
       echo "Building all modules" && \
       node scripts/src/maven.js build \
         --all \
+        --max-parallel $MAX_PARALLEL \
         --goal $MAVEN_GOAL \
         $([ "$SKIP_TESTS" = "true" ] && echo "--skip-tests" || echo "--with-tests"); \
-    fi
+    fi && \
+    echo "✓ Build completed"
 
 # -----------------------------------------------------------------------------
-# Test stage: Run tests only using maven.js CLI
+# Test stage: Run tests using maven.js build --goal test
 # -----------------------------------------------------------------------------
-FROM deps AS test
+FROM sync AS test
 
-# Copy source code
-COPY . .
-
-# Build arguments
 ARG MODULES=""
+ARG MAX_PARALLEL=4
 
-# Run tests with cache mount using maven.js CLI
+# Run tests with cache mount using maven.js build
 RUN --mount=type=cache,target=/root/.m2/repository \
+    echo "=== maven.js build (test) ===" && \
     if [ -n "$MODULES" ]; then \
       echo "Testing modules: $MODULES" && \
       node scripts/src/maven.js build \
         --modules "$MODULES" \
+        --max-parallel $MAX_PARALLEL \
         --goal test \
         --with-tests; \
     else \
       echo "Testing all modules" && \
       node scripts/src/maven.js build \
         --all \
+        --max-parallel $MAX_PARALLEL \
         --goal test \
         --with-tests; \
-    fi
+    fi && \
+    echo "✓ Tests completed"
 
 # -----------------------------------------------------------------------------
 # Artifacts stage: Extract build artifacts
 # -----------------------------------------------------------------------------
 FROM build AS artifacts
 
-# Create artifacts directory
 RUN mkdir -p /artifacts && \
-    find . -path "*/target/*.jar" -exec cp {} /artifacts/ \; 2>/dev/null || true
+    find . -path "*/target/*.jar" -exec cp {} /artifacts/ \; 2>/dev/null || true && \
+    echo "=== Artifacts ===" && ls -la /artifacts/
 
 # -----------------------------------------------------------------------------
-# Final stage: Minimal image with just artifacts
+# Runtime stage: Minimal image with artifacts
 # -----------------------------------------------------------------------------
 FROM amazoncorretto:21-al2023-headless AS runtime
 
 WORKDIR /app
 COPY --from=artifacts /artifacts/*.jar ./
-
-# Default command (override as needed)
 CMD ["ls", "-la"]
 

@@ -497,6 +497,32 @@ async function buildCommand(rootDir, options) {
 }
 
 // ============================================================================
+// DEPS COMMAND - Download Maven dependencies
+// ============================================================================
+
+function depsCommand(rootDir, options) {
+    const mavenCmd = getMavenCommand(rootDir);
+    const args = ['dependency:go-offline', '-B'];
+    if (options.quiet) args.push('-q');
+
+    console.log(`${COLORS.BOLD}Downloading Maven dependencies...${COLORS.RESET}`);
+    console.log(`Using: ${mavenCmd} ${args.join(' ')}\n`);
+
+    try {
+        execSync(`${mavenCmd} ${args.join(' ')}`, {
+            cwd: rootDir,
+            stdio: 'inherit',
+            shell: true
+        });
+        console.log(`\n${COLORS.GREEN}✓ Dependencies downloaded successfully${COLORS.RESET}`);
+        return 0;
+    } catch (error) {
+        console.error(`\n${COLORS.RED}✗ Failed to download dependencies${COLORS.RESET}`);
+        return 1;
+    }
+}
+
+// ============================================================================
 // DOWNSTREAM COMMAND
 // ============================================================================
 

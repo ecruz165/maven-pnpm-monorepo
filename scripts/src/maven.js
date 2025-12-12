@@ -635,6 +635,50 @@ function buildLevel(levelModules, rootDir, options, isFirstLevel = false) {
     });
 }
 
+// Install parent POM to local repository (required for module builds without -am)
+async function installParentPom(rootDir) {
+    return new Promise((resolve) => {
+        const mavenCmd = getMavenCommand(rootDir);
+        const pomPath = join(rootDir, 'pom.xml');
+
+        if (!existsSync(pomPath)) {
+            console.log(`${COLORS.YELLOW}[parent]${COLORS.RESET} No parent pom.xml found, skipping parent install`);
+            resolve(true);
+            return;
+        }
+
+        console.log(`${COLORS.CYAN}[parent]${COLORS.RESET} Installing parent POM to local repository...`);
+
+        // Install only the parent POM (non-recursive, no modules)
+        const mvn = spawn(mavenCmd, ['-N', 'install', '-DskipTests'], {cwd: rootDir, shell: true});
+
+        mvn.stdout.on('data', (data) => {
+            for (const line of data.toString().split('\n')) {
+                if (line.trim() && isImportantLine(line)) {
+                    console.log(`${COLORS.BLUE}[parent]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
+                }
+            }
+        });
+        mvn.stderr.on('data', (data) => {
+            for (const line of data.toString().split('\n')) {
+                if (line.trim()) console.error(`${COLORS.RED}[parent]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
+            }
+        });
+        mvn.on('close', (code) => {
+            if (code === 0) {
+                console.log(`${COLORS.GREEN}[parent]${COLORS.RESET} Parent POM installed successfully\n`);
+            } else {
+                console.error(`${COLORS.RED}[parent]${COLORS.RESET} Failed to install parent POM\n`);
+            }
+            resolve(code === 0);
+        });
+        mvn.on('error', (error) => {
+            console.error(`${COLORS.RED}[parent]${COLORS.RESET} Error: ${error.message}`);
+            resolve(false);
+        });
+    });
+}
+
 // Build modules level by level (dependencies first, then dependents)
 async function buildByLevels(modules, rootDir, options) {
     const graph = buildDependencyGraph(rootDir);
@@ -646,6 +690,13 @@ async function buildByLevels(modules, rootDir, options) {
         console.log(`Level ${i + 1}: ${level.join(', ')}`);
     });
     console.log('='.repeat(50) + '\n');
+
+    // Install parent POM first (required for module builds without -am)
+    const parentInstalled = await installParentPom(rootDir);
+    if (!parentInstalled) {
+        console.error(`${COLORS.RED}Failed to install parent POM. Aborting build.${COLORS.RESET}`);
+        return modules.map(mod => ({module: mod, success: false, duration: 0, exitCode: 1, error: 'Parent POM installation failed'}));
+    }
 
     const allResults = [];
 

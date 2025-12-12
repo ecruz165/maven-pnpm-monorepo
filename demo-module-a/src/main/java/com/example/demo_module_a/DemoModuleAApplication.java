@@ -43,4 +43,13 @@ public class DemoModuleAApplication {
 		return "Demo Module A - Core library for testing selective versioning";
 	}
 
+	/**
+	 * Get build information.
+	 * Added to test Docker-based CI builds.
+	 * @return build info string
+	 */
+	public static String getBuildInfo() {
+		return "Built with Docker CI - Amazon Corretto 21 + Node.js 20";
+	}
+
 }

@@ -141,14 +141,53 @@ The buildspec automatically authenticates using the `GITHUB_TOKEN` from Paramete
 
 ## Build Configuration
 
+### Build Modes
+
+The buildspec supports two build modes:
+
+#### 1. Docker Build Mode (Recommended)
+
+Uses `Dockerfile.ci` for consistent builds across GitHub Actions and AWS CodeBuild:
+
+```yaml
+env:
+  variables:
+    DOCKER_BUILD: "true"  # Default
+```
+
+**Benefits:**
+- Identical build environment as GitHub Actions
+- Uses `maven.js` CLI for parallel builds with colored output
+- BuildKit cache mounts for fast incremental builds
+- Consistent Java 21 + Node.js 20 + pnpm 9 environment
+
+**Requirements:**
+- CodeBuild environment must have **Privileged mode enabled** for Docker builds
+- Use image: `aws/codebuild/amazonlinux2-x86_64-standard:5.0` or later
+
+#### 2. Native Build Mode (Legacy)
+
+Builds directly on CodeBuild host without Docker:
+
+```yaml
+env:
+  variables:
+    DOCKER_BUILD: "false"
+```
+
+**Use when:**
+- Docker is not available or privileged mode cannot be enabled
+- Debugging build issues
+- Custom CodeBuild images already have all dependencies
+
 ### Environment Variables
 
 Set in CodeBuild project environment:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `NODE_VERSION` | Node.js version | `20` | No |
-| `PNPM_VERSION` | pnpm version | `9` | No |
+| `DOCKER_BUILD` | Use Docker container for builds | `true` | No |
+| `SKIP_TESTS` | Skip test execution | `false` | No |
 | `MAX_PARALLEL_BUILDS` | Max concurrent Maven builds | `4` | No |
 | `GITHUB_TOKEN` | GitHub PAT (from Parameter Store) | - | Yes |
 
@@ -167,31 +206,43 @@ Recommended compute types based on project size:
 The buildspec defines 4 phases:
 
 #### 1. Install Phase
-- Installs Java 21, Node.js 20, pnpm 9
-- Installs project dependencies
+- Configures git for changeset operations
 - Installs GitHub CLI for downstream PRs
+- Authenticates with GitHub
 
 #### 2. Pre-Build Phase
-- Configures git
-- Detects changed modules using `changed-modules.js`
-- Generates artifacts for debugging
-- Exits early if no changes detected
+- Installs pnpm for change detection (Docker mode)
+- Detects changed modules using `maven.js changed --csv`
+- Sets `SKIP_BUILD=true` if no changes detected
+- Exports `CHANGED_MODULES` for build phase
 
-#### 3. Build Phase
-- Builds changed modules in parallel (up to 4 concurrent)
-- Runs tests for changed modules
-- Fails fast on first error
+#### 3. Build Phase (Docker Mode)
+- Builds `Dockerfile.ci` with BuildKit
+- Uses `--target build` for compilation
+- Passes `MODULES`, `SKIP_TESTS`, `MAVEN_GOAL` as build args
+- Extracts artifacts from container to host
+- Runs tests using `--target test` (if not skipped)
+- Extracts test reports (surefire-reports) from container
+
+#### 3. Build Phase (Native Mode)
+- Runs `maven.js build` directly on host
+- Parallel builds with colored output
+- Uses Maven wrapper (`./mvnw`)
 
 #### 4. Post-Build Phase
 - Applies changeset versions
-- Syncs package.json ↔ pom.xml versions
+- Syncs package.json ↔ pom.xml using `maven.js sync`
 - Commits version changes
-- Publishes artifacts to repository
-- Creates downstream PRs
+- Publishes artifacts using `./mvnw deploy`
+- Creates downstream PRs using `maven.js downstream`
 
 ### Caching
 
-The buildspec caches:
+**Docker Build Mode:**
+- Docker layer cache (`/var/lib/docker/`)
+- BuildKit cache mounts for Maven and pnpm (inside container)
+
+**Native Build Mode:**
 - Maven local repository (`.m2/repository/`)
 - Node.js modules (`node_modules/`)
 - pnpm store (`.pnpm-store/`)

@@ -382,7 +382,9 @@ function buildModule(moduleName, color, rootDir, options) {
         const startTime = Date.now();
         const prefix = `${color}[${moduleName}]${COLORS.RESET}`;
         const mavenCmd = getMavenCommand(rootDir);
-        const mavenArgs = ['-pl', moduleName, '-am', 'clean', options.goal];
+        // Don't use -am when building multiple modules to avoid race conditions
+        // The reactor build handles dependencies correctly
+        const mavenArgs = ['-pl', moduleName, 'clean', options.goal];
         if (options.skipTests) mavenArgs.push('-DskipTests');
         if (options.offline) mavenArgs.push('--offline');
         console.log(`${prefix} ${getTimestamp()} Starting build...`);
@@ -413,6 +415,57 @@ function buildModule(moduleName, color, rootDir, options) {
                 exitCode: 1,
                 error: error.message
             });
+        });
+    });
+}
+
+// Build all modules using Maven reactor (single invocation, handles dependencies correctly)
+function buildWithReactor(modules, rootDir, options) {
+    return new Promise((resolve) => {
+        const startTime = Date.now();
+        const mavenCmd = getMavenCommand(rootDir);
+        const moduleList = modules.join(',');
+        // Use -pl with -am to build modules and their dependencies in correct order
+        const mavenArgs = ['-pl', moduleList, '-am', 'clean', options.goal];
+        if (options.skipTests) mavenArgs.push('-DskipTests');
+        if (options.offline) mavenArgs.push('--offline');
+        // Use Maven's parallel build feature
+        if (options.maxParallel > 1) mavenArgs.push(`-T${options.maxParallel}`);
+
+        console.log(`${COLORS.BOLD}Running Maven reactor build...${COLORS.RESET}`);
+        console.log(`Command: ${mavenCmd} ${mavenArgs.join(' ')}\n`);
+
+        const mvn = spawn(mavenCmd, mavenArgs, {cwd: rootDir, shell: true});
+        let output = '';
+
+        mvn.stdout.on('data', (data) => {
+            output += data.toString();
+            for (const line of data.toString().split('\n')) {
+                if (line.trim() && isImportantLine(line)) {
+                    console.log(`${COLORS.BLUE}[reactor]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
+                }
+            }
+        });
+        mvn.stderr.on('data', (data) => {
+            for (const line of data.toString().split('\n')) {
+                if (line.trim()) console.error(`${COLORS.RED}[reactor]${COLORS.RESET} ${getTimestamp()} ${line.trim()}`);
+            }
+        });
+        mvn.on('close', (code) => {
+            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+            // Parse output to get per-module results
+            const results = modules.map(mod => {
+                const successPattern = new RegExp(`${mod}[^\\n]*SUCCESS`, 'i');
+                const failPattern = new RegExp(`${mod}[^\\n]*FAILURE`, 'i');
+                const success = successPattern.test(output) && !failPattern.test(output);
+                return {module: mod, success: code === 0 || success, duration: parseFloat(duration) / modules.length, exitCode: code};
+            });
+            resolve(results);
+        });
+        mvn.on('error', (error) => {
+            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+            console.error(`${COLORS.RED}ERROR: ${error.message}${COLORS.RESET}`);
+            resolve(modules.map(mod => ({module: mod, success: false, duration: parseFloat(duration), exitCode: 1, error: error.message})));
         });
     });
 }
@@ -491,7 +544,8 @@ async function buildCommand(rootDir, options) {
     }
     console.log(`Modules: ${modulesToBuild.join(', ')}\nMax Parallel: ${options.maxParallel}\nSkip Tests: ${options.skipTests}\nGoal: ${options.goal}\n`);
     const startTime = Date.now();
-    const results = await buildModulesInParallel(modulesToBuild, rootDir, options);
+    // Use Maven reactor build to handle dependencies correctly and avoid race conditions
+    const results = await buildWithReactor(modulesToBuild, rootDir, options);
     console.log(`\n${COLORS.BOLD}All builds completed in ${((Date.now() - startTime) / 1000).toFixed(2)}s${COLORS.RESET}`);
     process.exit(printBuildSummary(results));
 }

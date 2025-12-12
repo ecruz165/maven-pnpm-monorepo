@@ -125,8 +125,15 @@ ARG MAVEN_GOAL=install
 ARG MAX_PARALLEL=4
 
 # Build with cache mount using maven.js build
+# Supports optional Maven settings secret for deploy goal:
+#   --secret id=m2settings,src=.m2/settings.xml
 RUN --mount=type=cache,target=/root/.m2/repository \
+    --mount=type=secret,id=m2settings,target=/root/.m2/settings.xml,required=false \
     echo "=== maven.js build ===" && \
+    echo "Goal: $MAVEN_GOAL" && \
+    if [ -f /root/.m2/settings.xml ]; then \
+      echo "Using custom Maven settings"; \
+    fi && \
     if [ -n "$MODULES" ]; then \
       echo "Building modules: $MODULES" && \
       node scripts/src/maven.js build \

@@ -1,7 +1,7 @@
 # =============================================================================
-# CI Workflow - Maven Monorepo
+# CI Workflow - Maven Monorepo (Docker-based)
 # =============================================================================
-# Uses maven.js CLI for all build operations:
+# Uses Dockerfile.ci with maven.js CLI for all build operations:
 #   init    - Generate package.json from pom.xml
 #   status  - Check version alignment
 #   sync    - Sync versions between package.json and pom.xml
@@ -22,14 +22,11 @@ on:
   workflow_dispatch:
 
 env:
-  JAVA_VERSION: '21'
-  JAVA_DISTRIBUTION: 'corretto'
-  NODE_VERSION: '20'
-  PNPM_VERSION: '9'
+  MAX_PARALLEL: '2'
 
 jobs:
   # ===========================================================================
-  # Build & Test
+  # Build & Test (Docker-based)
   # ===========================================================================
   build:
     name: Build & Test
@@ -45,17 +42,16 @@ jobs:
         with:
           fetch-depth: 0  # Full history for change detection
 
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: 'maven'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Set up Node.js
+      # -----------------------------------------------------------------------
+      # Detect changed modules (needs pnpm on host for git operations)
+      # -----------------------------------------------------------------------
+      - name: Set up Node.js (for change detection)
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '20'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -64,18 +60,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
-
-      # -----------------------------------------------------------------------
-      # maven.js CLI commands
-      # -----------------------------------------------------------------------
-      - name: 'maven.js init - Generate package.json files'
-        run: node scripts/src/maven.js init
-
-      - name: 'maven.js status - Check version alignment'
-        run: node scripts/src/maven.js status
-
-      - name: 'maven.js sync - Sync versions'
-        run: node scripts/src/maven.js sync --dry-run
 
       - name: 'maven.js changed - Detect changed modules'
         id: changed
@@ -95,13 +79,45 @@ jobs:
         if: steps.changed.outputs.has_changes == 'true'
         run: node scripts/src/maven.js deps
 
-      - name: 'maven.js build - Build changed modules (with tests)'
+      # -----------------------------------------------------------------------
+      # Docker Build: init -> status -> sync -> build (with tests)
+      # -----------------------------------------------------------------------
+      - name: 'Docker Build - Build & Test changed modules'
         if: steps.changed.outputs.has_changes == 'true'
         run: |
-          node scripts/src/maven.js build \
-            --modules "${{ steps.changed.outputs.modules }}" \
-            --with-tests \
-            --max-parallel 2
+          echo "=== Building with Dockerfile.ci ==="
+          echo "Modules: ${{ steps.changed.outputs.modules }}"
+
+          DOCKER_BUILDKIT=1 docker build \
+            -f Dockerfile.ci \
+            --target build \
+            --build-arg MODULES="${{ steps.changed.outputs.modules }}" \
+            --build-arg SKIP_TESTS=false \
+            --build-arg MAVEN_GOAL=install \
+            --build-arg MAX_PARALLEL=${{ env.MAX_PARALLEL }} \
+            -t monorepo-build:${{ github.run_number }} \
+            .
+
+      - name: Extract build artifacts
+        if: steps.changed.outputs.has_changes == 'true'
+        run: |
+          echo "=== Extracting artifacts from container ==="
+          CONTAINER_ID=$(docker create monorepo-build:${{ github.run_number }})
+
+          # Extract JARs and test results from each module
+          for MODULE in demo-module-a demo-module-b demo-module-c; do
+            mkdir -p $MODULE/target
+            docker cp $CONTAINER_ID:/workspace/$MODULE/target/. $MODULE/target/ 2>/dev/null || true
+          done
+
+          docker rm $CONTAINER_ID
+
+          # Show extracted artifacts
+          echo "=== Extracted JARs ==="
+          find . -path "*/target/*.jar" -type f | head -20
+
+          echo "=== Extracted test results ==="
+          find . -path "*/target/surefire-reports/*.xml" -type f | head -20
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
@@ -122,7 +138,7 @@ jobs:
           retention-days: 7
 
   # ===========================================================================
-  # Version & Publish (only on push to main)
+  # Version (only on push to main) - Runs on host for git operations
   # ===========================================================================
   version:
     name: Version Modules
@@ -142,7 +158,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '20'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -185,7 +201,7 @@ jobs:
           git push origin main || echo "No changes to push"
 
   # ===========================================================================
-  # Publish (only on push to main after versioning)
+  # Publish (only on push to main after versioning) - Docker-based
   # ===========================================================================
   publish:
     name: Publish Modules
@@ -201,18 +217,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main  # Get latest including version commits
+          fetch-depth: 0
 
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: 'maven'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Set up Node.js
+      - name: Set up Node.js (for change detection)
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '20'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -235,11 +248,11 @@ jobs:
             echo "Modules to publish: $CHANGED"
           fi
 
-      - name: Configure Maven settings
+      - name: Create Maven settings for GitHub Packages
         if: steps.changed.outputs.has_changes == 'true'
         run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml << 'EOF'
+          mkdir -p .m2
+          cat > .m2/settings.xml << EOF
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                     xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
@@ -247,22 +260,29 @@ jobs:
             <servers>
               <server>
                 <id>github</id>
-                <username>${env.GITHUB_ACTOR}</username>
-                <password>${env.GITHUB_TOKEN}</password>
+                <username>${{ github.actor }}</username>
+                <password>${{ secrets.GITHUB_TOKEN }}</password>
               </server>
             </servers>
           </settings>
           EOF
 
-      - name: 'maven.js build - Build for deployment'
+      - name: 'Docker Build - Deploy to GitHub Packages'
         if: steps.changed.outputs.has_changes == 'true'
         run: |
-          node scripts/src/maven.js build \
-            --modules "${{ steps.changed.outputs.modules }}" \
-            --skip-tests \
-            --goal deploy
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "=== Deploying with Dockerfile.ci ==="
+          echo "Modules: ${{ steps.changed.outputs.modules }}"
+
+          DOCKER_BUILDKIT=1 docker build \
+            -f Dockerfile.ci \
+            --target build \
+            --build-arg MODULES="${{ steps.changed.outputs.modules }}" \
+            --build-arg SKIP_TESTS=true \
+            --build-arg MAVEN_GOAL=deploy \
+            --build-arg MAX_PARALLEL=${{ env.MAX_PARALLEL }} \
+            --secret id=m2settings,src=.m2/settings.xml \
+            -t monorepo-deploy:${{ github.run_number }} \
+            .
 
       - name: Create deployment summary
         if: steps.changed.outputs.has_changes == 'true'
@@ -270,4 +290,3 @@ jobs:
           echo "## Published Modules" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Modules:** ${{ steps.changed.outputs.modules }}" >> $GITHUB_STEP_SUMMARY
-

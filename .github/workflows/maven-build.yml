@@ -1,3 +1,5 @@
+# PR Validation Workflow
+# Uses Dockerfile.ci with maven.js CLI for all build operations
 name: PR Validation
 
 on:
